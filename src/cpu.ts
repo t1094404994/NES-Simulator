@@ -127,7 +127,7 @@ class StatusFlag{
 
 //操作模式
 enum AddressMode{
-
+  IMP
 }
 
 //操作指令接口
