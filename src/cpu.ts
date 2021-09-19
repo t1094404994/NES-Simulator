@@ -557,9 +557,9 @@ export class Cpu{
   private BRK():number{
     //1.把Program Counter接下来的指令位置和Status寄存器放到栈里面
     this.regPc++;
-    //手动模拟溢出 TODO
+    //手动模拟溢出
     if(this.regPc>0xffff){
-      this.regPc=1;
+      this.regPc=0;
     }
     //分别把高八位和低八位推入栈
     this.stackPush(this.regPc>>8);
@@ -630,10 +630,10 @@ export class Cpu{
   //比较储存器值与累加器A.
   private CMP():number{
     const operand:number= this.cpuBus.getValue(this.address);
-    //TODO 与C++类型和运算法则不同
-    const temp:number = this.regA -operand;
+    //模拟八位运算
+    const temp=(this.regA -operand)&0xff;
     this.regSf.setC(this.regA >= operand);
-    this.regSf.setZ((temp & 0x00FF) === 0);
+    this.regSf.setZ(temp=== 0);
     this.regSf.setN((temp & 0x0080)!==0);
     return 0;
   }
@@ -641,10 +641,10 @@ export class Cpu{
   //比较储存器值与变址寄存器X
   private CPX():number{
     const operand:number= this.cpuBus.getValue(this.address);
-    //TODO 与C++类型和运算法则不同
-    const temp:number = this.regX -operand;
+    //模拟八位运算
+    const temp=(this.regX -operand)&0xff;
     this.regSf.setC(this.regX >= operand);
-    this.regSf.setZ((temp & 0x00FF) === 0);
+    this.regSf.setZ(temp=== 0);
     this.regSf.setN((temp & 0x0080)!==0);
     return 0;
   }
@@ -652,10 +652,10 @@ export class Cpu{
   //比较储存器值与变址寄存器Y
   private CPY():number{
     const operand:number= this.cpuBus.getValue(this.address);
-    //TODO 与C++类型和运算法则不同
-    const temp:number = this.regY -operand;
+    //模拟八位运算
+    const temp=(this.regY -operand)&0xff;
     this.regSf.setC(this.regY >= operand);
-    this.regSf.setZ((temp & 0x00FF) === 0);
+    this.regSf.setZ(temp=== 0);
     this.regSf.setN((temp & 0x0080)!==0);
     return 0;
   }
@@ -664,7 +664,7 @@ export class Cpu{
   private DEC():number{
     const operand:number= this.cpuBus.getValue(this.address);
     let res:number = operand - 1;
-    if(res===-1) res=1;
+    res=res&0xff;
     this.cpuBus.setValue(this.address, res);
     this.regSf.setZ(res === 0);
     this.regSf.setN((res & 0x0080)!==0);
@@ -675,7 +675,7 @@ export class Cpu{
   private DEX():number{
     this.regX--;
     //人工补位
-    if(this.regX===-1) this.regX=1;
+    this.regX=this.regX&0xff;
     this.regSf.setZ(this.regX===0);
     this.regSf.setN((this.regX & 0x0080)!==0);
     return 0;
@@ -685,7 +685,7 @@ export class Cpu{
   private DEY():number{
     this.regY--;
     //人工补位
-    if(this.regY===-1) this.regY=1;
+    this.regY=this.regY&0xff;
     this.regSf.setZ(this.regY===0);
     this.regSf.setN((this.regY & 0x0080)!==0);
     return 0;
@@ -704,8 +704,8 @@ export class Cpu{
   private INC():number{
     const operand:number = this.cpuBus.getValue(this.address);
     let res:number=operand+1;
-    //补位 也可能不用
-    if(res>0xff) res=1;
+    //溢出截取
+    res=res&0xff;
     this.cpuBus.setValue(this.address,res);
     this.regSf.setZ(this.regA === 0);
     this.regSf.setN((this.regA & 0x0080)!==0);
@@ -715,8 +715,8 @@ export class Cpu{
   //变址寄存器X内容+1
   private INX():number{
     this.regX++;
-    //补位 也可能不用
-    if(this.regX>0xff) this.regX=1;
+    //溢出截取
+    this.regX=this.regX&0xff;
     this.regSf.setZ(this.regX === 0);
     this.regSf.setN((this.regX & 0x0080)!==0);
     return 0;
@@ -725,8 +725,8 @@ export class Cpu{
   //变址寄存器Y内容+1
   private INY():number{
     this.regY++;
-    //补位 也可能不用
-    if(this.regY>0xff) this.regY=1;
+    //溢出截取
+    this.regY=this.regY&0xff;
     this.regSf.setZ(this.regY === 0);
     this.regSf.setN((this.regY & 0x0080)!==0);
     return 0;
@@ -741,8 +741,8 @@ export class Cpu{
   //跳转至子程序, 记录该条指令最后的地址
   private JSR():number{
     this.regPc--;
-    //补位 也可能不用
-    if(this.regPc===-1) this.regPc=1;
+    //溢出截取
+    this.regPc=this.regPc&0xff;
     this.stackPush(this.regPc>>8);
     this.stackPush(this.regPc&0xff);
     this.regPc=this.address;
@@ -917,12 +917,10 @@ export class Cpu{
   private SBC():number{
     //1.先取走addr_res对应的数值
     const operand:number= this.cpuBus.getValue(this.address);
-    //TODO c++运算问题
-    const sub:number= this.regA - operand - this.regSf.getC();
-    //TODO 问题
+    const sub:number= (this.regA - operand - this.regSf.getC())&0xff;
     this.regSf.setC(!(sub & 0x100));
     this.regSf.setV(((this.regA ^ sub) & ((~operand) ^ sub) & 0x80)!==0);
-    this.regSf.setZ((sub & 0xFF) === 0);
+    this.regSf.setZ(sub=== 0);
     this.regSf.setN((sub & 0x80)!==0);
     this.regA = sub & 0x00FF;
     return 1;
