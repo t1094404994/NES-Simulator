@@ -278,6 +278,11 @@ export class Cpu{
     }
   }
 
+  //快速恢复TODO 保留接口QuickResume
+  public quickResume():number{
+    return 0;
+  }
+
   //数据入栈
   private stackPush(value:number):void{
     if(this.regSp===0){

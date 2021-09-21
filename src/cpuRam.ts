@@ -15,6 +15,11 @@ export class CpuRam{
     this.ramView=new DataView(this.ram);
   }
 
+  public clear():void{
+    this.ramView=null;
+    this.ram=null;
+  }
+
   /**
    * 设置RAM的数据
    * @param address 16bit地址 
