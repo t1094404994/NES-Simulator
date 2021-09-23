@@ -50,4 +50,9 @@ export class CpuRam{
     }
     return this.ramView.getUint8(address);
   }
+
+  //获取一页的数据视图
+  public getPage(address:number):DataView{
+    return new DataView(this.ram,address,256);
+  }
 }

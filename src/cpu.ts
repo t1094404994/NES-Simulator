@@ -170,8 +170,10 @@ export class Cpu{
     this.cpuBus=bus;
     this.regSf=new StatusFlag();
     this.regSpOffSet=0x100;
+    this.cyclesWait=0;
+    this.clockCount=0;
+    this.address=0;
     this.initTable();
-    this.reset();
   }
 
   //重置/初始化CPU状态
@@ -219,10 +221,12 @@ export class Cpu{
       //根据操作码对应的寻址方式，找到操作数的地址
       const instr:Instruction=this.opcodeMapTable[this.opcode];
       const modeCycles:number=this.impAddressMode(instr.addressMode);
+      console.log('当前地址:'+this.address.toString(16));
       //执行操作码
       const instrCycles:number=this.impInstructions(instr.name);
       //计算这条指令花费的周期
       this.cyclesWait=instr.cycleCnt;
+      console.log('当前pc寄存器:'+this.regPc.toString(16));
       //跨页的话周期要多加
       if(instrCycles < 0) this.cyclesWait += (-instrCycles);
       else this.cyclesWait += (instrCycles & modeCycles);
@@ -1151,6 +1155,8 @@ export class Cpu{
       return this.STX();
     case 'STY':
       return this.STY();
+    case 'TAX':
+      return this.TAX();
     case 'TAY':
       return this.TAY();
     case 'TSX':
@@ -1162,7 +1168,8 @@ export class Cpu{
     case 'TYA':
       return this.TYA();
     default:
-      throw new Error('未定义的汇编操作');
+      console.warn('未定义的汇编操作');
+      return 0;
     }
   }
 

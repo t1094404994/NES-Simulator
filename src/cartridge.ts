@@ -14,7 +14,7 @@ export interface Mapper{
   ppuReadPt:ReadData,
   ppuWritePt:WriteData,
   //名称表镜像
-  nameTableMirror?:number,
+  nametableMirror:number,
   //增加的RAM
   addRam?:ArrayBuffer,
   addRamDataView?:DataView,
@@ -67,6 +67,7 @@ export class CartridgeReader{
     this.mapperId= ((this.dataView.getUint8(6) >> 4) & 0xf) | (this.dataView.getUint8(7) & 0xf0);
     if(this.mapperId===0){
       this.mapper=new Mapper0(this,this.vramNum!==0);
+      this.mapper.nametableMirror=this.dataView.getUint8(6) & 0xb;
     }
     //MAPPER
     return true;
@@ -85,5 +86,10 @@ export class CartridgeReader{
     }else{
       return false;
     }
+  }
+
+  //获取一页的数据
+  public getPage(address:number):DataView{
+    return new DataView(this.mapper.addRam,address,256);
   }
 }

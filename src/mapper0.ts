@@ -9,6 +9,7 @@ export class Mapper0 implements Mapper{
   private vromDataView:DataView;
   //卡带
   private cartridge:CartridgeReader;
+  public nametableMirror:number;
   constructor(cartridge:CartridgeReader,hasVrom:boolean){
     //如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 
     this.reset(cartridge,hasVrom);
@@ -46,6 +47,7 @@ export class Mapper0 implements Mapper{
       console.warn('cpuReadRpg'+'总线地址:'+busAddress+'超过RPG ROM的最大值'+maxAddress);
       address=maxAddress;
     }
+    console.log('从RPG ROM的'+address.toString(16)+' 取得'+this.rpgDataView.getUint8(address));
     return this.rpgDataView.getUint8(address);
   }
   //CPU写入程序数据
