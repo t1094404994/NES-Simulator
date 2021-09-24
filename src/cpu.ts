@@ -166,8 +166,7 @@ export class Cpu{
   //CUP总线的引用
   public cpuBus:CpuBus;
 
-  constructor(bus:CpuBus){
-    this.cpuBus=bus;
+  constructor(){
     this.regSf=new StatusFlag();
     this.regSpOffSet=0x100;
     this.cyclesWait=0;
@@ -190,6 +189,10 @@ export class Cpu{
     this.regSf.setI(true);
     this.regSf.setU(true);
     console.log('重置/初始化CPU');
+  }
+
+  public setCpuBus(_cpuBus:CpuBus):void{
+    this.cpuBus=_cpuBus;
   }
 
   //初始化操作指令表

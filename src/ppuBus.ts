@@ -24,7 +24,7 @@ export interface OAMSprite{
   flipX:boolean;
   flipY:boolean;
 }
-export class OAMRAM{
+export class Oamram{
   //精灵RAM数据 256字节  一共256/4=64个精灵信息
   private data:ArrayBuffer;
   private dataView:DataView;
