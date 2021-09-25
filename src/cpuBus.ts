@@ -1,6 +1,7 @@
 import { CpuRam } from './cpuRam';
 import {CartridgeReader} from './cartridge';
 import { Cpu } from './cpu';
+import { Ppu } from './ppu';
 //CUP总线
 export class CpuBus{
   //最初的2kb RAM
@@ -9,6 +10,8 @@ export class CpuBus{
   private cpu:Cpu;
   //卡带数据
   private cartridgeReader:CartridgeReader;
+  //PPU
+  private ppu:Ppu
   //初始化CPU总线
   public init(_cartridgeReader:CartridgeReader,_cpu:Cpu):void{
     this.cartridgeReader=_cartridgeReader;
@@ -33,6 +36,32 @@ export class CpuBus{
     if(busAddress>=0&&busAddress<0x2000){
       //截掉高位 RAM实际只有2kb
       return this.cpuRam.getBit(busAddress&0x7ff);
+    }
+    //从PPU中获取
+    else if(busAddress>=0x2000&&busAddress<0x4000){
+      switch(busAddress&0x2007){
+      case 0x2000:
+        console.warn('CPU不能取得PPU  0x2000');
+        return 0;
+      case 0x2001:
+        console.warn('CPU不能取得PPU  0x2000');
+        return 0;
+      case 0x2002:
+        return this.ppu.getStatus();
+      case 0x2003:
+        console.warn('CPU不能取得PPU  0x2000');
+        return 0;
+      case 0x2004:
+        return this.ppu.getOamdata();
+      case 0x2005:
+        console.warn('CPU不能取得PPU  0x2000');
+        return 0;
+      case 0x2006:
+        console.warn('CPU不能取得PPU  0x2000');
+        return 0;
+      case 0x2007:
+        return this.ppu.readData();
+      }
     }
     //从增加的RAM中获取
     else if(busAddress>=0x6000&&busAddress<0x8000){
@@ -63,7 +92,44 @@ export class CpuBus{
     if(busAddress>=0&&busAddress<0x2000){
       this.cpuRam.setBit(busAddress&0x7ff,value);
     }
-    //DMA
+    //PPU寄存器
+    else if(busAddress>=0x2000&&busAddress<0x4000){
+      console.log('CPU写入数值'+value+'到PPU寄存器'+busAddress.toString(16));
+      switch(busAddress&0x2007){
+      case 0x2000:
+        this.ppu.writeCtrl(value);
+        break;
+      case 0x2001: //PPUMASK
+        this.ppu.writeMask(value);
+        break;
+      case 0x2002:
+        console.warn('CPU不能写入数据到PPU状态寄存器');
+        break;
+      case 0x2003:
+        this.ppu.writeOamaddr(value);
+        break;
+      case 0x2004:
+        this.ppu.writeOamdata(value);
+        break;
+      case 0x2005:
+        this.ppu.writeScroll(value);
+        break;
+      case 0x2006:
+        this.ppu.writeAddr(value);
+        break;
+      case 0x2007:
+        this.ppu.writeData(value);
+        break;
+      }
+    }
+    //DMA CPU直接把256字节精灵RAM的引用数据传入PPU
+    else if(busAddress===0x4014){
+      console.log('CPU直接把'+value.toString(16)+'起始的精灵RAM的引用数据传入PPU');
+      this.cpu.dmaSleep();
+      const page:DataView=this.getPage(value);
+      this.ppu.oamDma(page);
+    }
+    //输入
     //扩展RAM
     else if(busAddress>=0x6000&&busAddress<0x8000){
       if(this.cartridgeReader.hasAddedRom){

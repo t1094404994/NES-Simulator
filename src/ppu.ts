@@ -267,8 +267,7 @@ export class Ppu{
   }
 
   //重置/初始化
-  public reset(_cup:Cpu):void{
-    this.cpu=_cup;
+  public reset():void{
     this.regCtrl.setData(0);
     this.regMask.setData(0);
     this.regStatus.setData(0);
@@ -289,6 +288,14 @@ export class Ppu{
     this.frameDataView=new DataView(this.frameData);
     this.oamram=new Oamram();
     this.evenFrame=true;
+  }
+
+  public setCpu(_cpu:Cpu):void{
+    this.cpu=_cpu;
+  }
+
+  public setPpuBus(_ppuBus:PpuBus):void{
+    this.ppuBus=_ppuBus;
   }
 
   //初始化调色板

@@ -274,7 +274,7 @@ export class Cpu{
   }
 
   //执行DMA时，CPU会被阻塞513或514个周期
-  public dma_sleep():void{
+  public dmaSleep():void{
     console.log('执行DMA');
     if (this.clockCount & 1){
       //奇数周期需要sleep 514个CPU时钟周期
