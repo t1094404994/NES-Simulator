@@ -154,6 +154,8 @@ export class Cpu{
   
   //当前指令需要的操作数的地址 16bit
   private address:number;
+  //暂存REL寻址模式后的地址偏移
+  private addressRel:number;
 
   //当前操作码 8bit
   private opcode:number;
@@ -172,6 +174,7 @@ export class Cpu{
     this.cyclesWait=0;
     this.clockCount=0;
     this.address=0;
+    this.addressRel=0;
     this.initTable();
   }
 
@@ -197,7 +200,8 @@ export class Cpu{
 
   //初始化操作指令表
   private initTable():void{
-    this.opcodeMapTable=[{name:'BRK',addressMode: AddressMode.IMM,cycleCnt:7},{name:'ORA',addressMode: AddressMode.IZX,cycleCnt:6 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: '???',addressMode:AddressMode.IMP,cycleCnt:3 },{name: 'ORA',addressMode:AddressMode.ZP0,cycleCnt:3},{name: 'ASL',addressMode:AddressMode.ZP0,cycleCnt:5},{name: '???',addressMode:AddressMode.IMP,cycleCnt:5 },{name: 'PHP',addressMode:AddressMode.IMP,cycleCnt:3 },{name: 'ORA',addressMode:AddressMode.IMM,cycleCnt:2 },{name: 'ASL',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'ORA',addressMode:AddressMode.ABS,cycleCnt:4},{name: 'ASL',addressMode:AddressMode.ABS,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},
+    this.opcodeMapTable=[
+      {name:'BRK',addressMode: AddressMode.IMM,cycleCnt: 7},{name:'ORA',addressMode: AddressMode.IZX,cycleCnt:6 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: '???',addressMode:AddressMode.IMP,cycleCnt:3 },{name: 'ORA',addressMode:AddressMode.ZP0,cycleCnt:3},{name: 'ASL',addressMode:AddressMode.ZP0,cycleCnt:5},{name: '???',addressMode:AddressMode.IMP,cycleCnt:5 },{name: 'PHP',addressMode:AddressMode.IMP,cycleCnt:3 },{name: 'ORA',addressMode:AddressMode.IMM,cycleCnt:2 },{name: 'ASL',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'ORA',addressMode:AddressMode.ABS,cycleCnt:4},{name: 'ASL',addressMode:AddressMode.ABS,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},
       {name:'BPL',addressMode: AddressMode.REL,cycleCnt: 2},{name:'ORA',addressMode: AddressMode.IZY,cycleCnt:5 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'ORA',addressMode:AddressMode.ZPX,cycleCnt:4},{name: 'ASL',addressMode:AddressMode.ZPX,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6 },{name: 'CLC',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'ORA',addressMode:AddressMode.ABY,cycleCnt:4 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:7 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'ORA',addressMode:AddressMode.ABX,cycleCnt:4},{name: 'ASL',addressMode:AddressMode.ABX,cycleCnt:7},{name: '???',addressMode:AddressMode.IMP,cycleCnt:7},
       {name:'JSR',addressMode: AddressMode.ABS,cycleCnt: 6},{name:'AND',addressMode: AddressMode.IZX,cycleCnt:6 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: 'BIT',addressMode:AddressMode.ZP0,cycleCnt:3 },{name: 'AND',addressMode:AddressMode.ZP0,cycleCnt:3},{name: 'ROL',addressMode:AddressMode.ZP0,cycleCnt:5},{name: '???',addressMode:AddressMode.IMP,cycleCnt:5 },{name: 'PLP',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'AND',addressMode:AddressMode.IMM,cycleCnt:2 },{name: 'ROL',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'BIT',addressMode:AddressMode.ABS,cycleCnt:4 },{name: 'AND',addressMode:AddressMode.ABS,cycleCnt:4},{name: 'ROL',addressMode:AddressMode.ABS,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},
       {name:'BMI',addressMode: AddressMode.REL,cycleCnt: 2},{name:'AND',addressMode: AddressMode.IZY,cycleCnt:5 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'AND',addressMode:AddressMode.ZPX,cycleCnt:4},{name: 'ROL',addressMode:AddressMode.ZPX,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6 },{name: 'SEC',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'AND',addressMode:AddressMode.ABY,cycleCnt:4 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:7 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'AND',addressMode:AddressMode.ABX,cycleCnt:4},{name: 'ROL',addressMode:AddressMode.ABX,cycleCnt:7},{name: '???',addressMode:AddressMode.IMP,cycleCnt:7},
@@ -207,7 +211,7 @@ export class Cpu{
       {name:'BVS',addressMode: AddressMode.REL,cycleCnt: 2},{name:'ADC',addressMode: AddressMode.IZY,cycleCnt:5 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'ADC',addressMode:AddressMode.ZPX,cycleCnt:4},{name: 'ROR',addressMode:AddressMode.ZPX,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6 },{name: 'SEI',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'ADC',addressMode:AddressMode.ABY,cycleCnt:4 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:7 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'ADC',addressMode:AddressMode.ABX,cycleCnt:4},{name: 'ROR',addressMode:AddressMode.ABX,cycleCnt:7},{name: '???',addressMode:AddressMode.IMP,cycleCnt:7},
       {name:'???',addressMode: AddressMode.IMP,cycleCnt: 2},{name:'STA',addressMode: AddressMode.IZX,cycleCnt:6 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},{name: 'STY',addressMode:AddressMode.ZP0,cycleCnt:3 },{name: 'STA',addressMode:AddressMode.ZP0,cycleCnt:3},{name: 'STX',addressMode:AddressMode.ZP0,cycleCnt:3},{name: '???',addressMode:AddressMode.IMP,cycleCnt:3 },{name: 'DEY',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'TXA',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'STY',addressMode:AddressMode.ABS,cycleCnt:4 },{name: 'STA',addressMode:AddressMode.ABS,cycleCnt:4},{name: 'STX',addressMode:AddressMode.ABS,cycleCnt:4},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4},
       {name:'BCC',addressMode: AddressMode.REL,cycleCnt: 2},{name:'STA',addressMode: AddressMode.IZY,cycleCnt:6 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},{name: 'STY',addressMode:AddressMode.ZPX,cycleCnt:4 },{name: 'STA',addressMode:AddressMode.ZPX,cycleCnt:4},{name: 'STX',addressMode:AddressMode.ZPY,cycleCnt:4},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'TYA',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'STA',addressMode:AddressMode.ABY,cycleCnt:5 },{name: 'TXS',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:5 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:5 },{name: 'STA',addressMode:AddressMode.ABX,cycleCnt:5},{name: '???',addressMode:AddressMode.IMP,cycleCnt:5},{name: '???',addressMode:AddressMode.IMP,cycleCnt:5},
-      {name:'LDY',addressMode: AddressMode.IMM,cycleCnt: 2},{name:'LDA',addressMode: AddressMode.IZX,cycleCnt:6 },{name: 'LDX',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},{name: 'LDY',addressMode:AddressMode.ZP0,cycleCnt:3 },{name: 'LDA',addressMode:AddressMode.ZP0,cycleCnt:3},{name: 'LDX',addressMode:AddressMode.ZP0,cycleCnt:3},{name: '???',addressMode:AddressMode.IMP,cycleCnt:3 },{name: 'TAY',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'LDA',addressMode:AddressMode.IMM,cycleCnt:2 },{name: 'TAX',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'LDY',addressMode:AddressMode.ABS,cycleCnt:4 },{name: 'LDA',addressMode:AddressMode.ABS,cycleCnt:4},{name: 'LDX',addressMode:AddressMode.ABS,cycleCnt:4},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4},
+      {name:'LDY',addressMode: AddressMode.IMM,cycleCnt: 2},{name:'LDA',addressMode: AddressMode.IZX,cycleCnt:6 },{name: 'LDX',addressMode:AddressMode.IMM,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},{name: 'LDY',addressMode:AddressMode.ZP0,cycleCnt:3 },{name: 'LDA',addressMode:AddressMode.ZP0,cycleCnt:3},{name: 'LDX',addressMode:AddressMode.ZP0,cycleCnt:3},{name: '???',addressMode:AddressMode.IMP,cycleCnt:3 },{name: 'TAY',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'LDA',addressMode:AddressMode.IMM,cycleCnt:2 },{name: 'TAX',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'LDY',addressMode:AddressMode.ABS,cycleCnt:4 },{name: 'LDA',addressMode:AddressMode.ABS,cycleCnt:4},{name: 'LDX',addressMode:AddressMode.ABS,cycleCnt:4},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4},
       {name:'BCS',addressMode: AddressMode.REL,cycleCnt: 2},{name:'LDA',addressMode: AddressMode.IZY,cycleCnt:5 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:5},{name: 'LDY',addressMode:AddressMode.ZPX,cycleCnt:4 },{name: 'LDA',addressMode:AddressMode.ZPX,cycleCnt:4},{name: 'LDX',addressMode:AddressMode.ZPY,cycleCnt:4},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'CLV',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'LDA',addressMode:AddressMode.ABY,cycleCnt:4 },{name: 'TSX',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'LDY',addressMode:AddressMode.ABX,cycleCnt:4 },{name: 'LDA',addressMode:AddressMode.ABX,cycleCnt:4},{name: 'LDX',addressMode:AddressMode.ABY,cycleCnt:4},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4},
       {name:'CPY',addressMode: AddressMode.IMM,cycleCnt: 2},{name:'CMP',addressMode: AddressMode.IZX,cycleCnt:6 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: 'CPY',addressMode:AddressMode.ZP0,cycleCnt:3 },{name: 'CMP',addressMode:AddressMode.ZP0,cycleCnt:3},{name: 'DEC',addressMode:AddressMode.ZP0,cycleCnt:5},{name: '???',addressMode:AddressMode.IMP,cycleCnt:5 },{name: 'INY',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'CMP',addressMode:AddressMode.IMM,cycleCnt:2 },{name: 'DEX',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'CPY',addressMode:AddressMode.ABS,cycleCnt:4 },{name: 'CMP',addressMode:AddressMode.ABS,cycleCnt:4},{name: 'DEC',addressMode:AddressMode.ABS,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},
       {name:'BNE',addressMode: AddressMode.REL,cycleCnt: 2},{name:'CMP',addressMode: AddressMode.IZY,cycleCnt:5 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'CMP',addressMode:AddressMode.ZPX,cycleCnt:4},{name: 'DEC',addressMode:AddressMode.ZPX,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6 },{name: 'CLD',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'CMP',addressMode:AddressMode.ABY,cycleCnt:4 },{name: 'NOP',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:7 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'CMP',addressMode:AddressMode.ABX,cycleCnt:4},{name: 'DEC',addressMode:AddressMode.ABX,cycleCnt:7},{name: '???',addressMode:AddressMode.IMP,cycleCnt:7},
@@ -408,12 +412,10 @@ export class Cpu{
 
   //相对寻址 Relative Addressing 条件转移指令的跳转步长 取有符号的8bit数值
   private REL():number{
-    const offSet:number=this.cpuBus.getValue(this.regPc++);
+    this.addressRel=this.cpuBus.getValue(this.regPc++);
     //取得有符号的偏移量
-    if(offSet>=0x80){
-      this.address=-offSet+0x80+this.regPc;
-    }else{
-      this.address+=offSet+this.regPc;
+    if(this.addressRel&0x80){
+      this.addressRel=this.addressRel|0xff00;
     }
     return 0;
   }
@@ -470,6 +472,7 @@ export class Cpu{
   private BCC():number{
     let cycles_add = 0;
     if (this.regSf.getC() === 0){
+      this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
         cycles_add = 2;
@@ -485,6 +488,7 @@ export class Cpu{
     //C=1则进入分支
     let cycles_add = 0;
     if (this.regSf.getC() === 1){
+      this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
         cycles_add = 2;
@@ -499,6 +503,7 @@ export class Cpu{
   private BEQ():number{
     let cycles_add = 0;
     if (this.regSf.getZ() === 1){
+      this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
         cycles_add = 2;
@@ -523,6 +528,7 @@ export class Cpu{
   private BMI():number{
     let cycles_add = 0;
     if (this.regSf.getN() === 1){
+      this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
         cycles_add = 2;
@@ -537,6 +543,7 @@ export class Cpu{
   private BNE():number{
     let cycles_add = 0;
     if (this.regSf.getZ() === 0){
+      this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
         cycles_add = 2;
@@ -551,6 +558,7 @@ export class Cpu{
   private BPL():number{
     let cycles_add = 0;
     if (this.regSf.getN() === 0){
+      this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
         cycles_add = 2;
@@ -591,6 +599,7 @@ export class Cpu{
   private BVC():number{
     let cycles_add = 0;
     if (this.regSf.getV() === 0){
+      this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
         cycles_add = 2;
@@ -605,6 +614,7 @@ export class Cpu{
   private BVS():number{
     let cycles_add = 0;
     if (this.regSf.getV() === 1){
+      this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
         cycles_add = 2;

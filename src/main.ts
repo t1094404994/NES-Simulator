@@ -41,8 +41,12 @@ export class Main{
     this.cpu.setCpuBus(this.cpubus);
     this.ppu.setCpu(this.cpu);
     this.ppu.setPpuBus(this.ppuBus);
+    this.cpubus.setCpu(this.cpu);
+    this.cpubus.setPpu(this.ppu);
     this.cartridge=new CartridgeReader();
     this.canvas=document.createElement('canvas');
+    this.canvas.width=256;
+    this.canvas.height=256;
     this.logicBaseFPS=60;
     this.logicFPS=60;
     this.renderFPS=60;
@@ -52,12 +56,13 @@ export class Main{
     this.setCartidegData=this.setCartidegData.bind(this);
     this.step=this.step.bind(this);
     this.setInputData=this.setInputData.bind(this);
+    this.enterFrame=this.enterFrame.bind(this);
   }
 
   //设置卡带数据
   public setCartidegData(data:ArrayBuffer):void{
     this.cartridge.resetData(data);
-    this.cpubus.init(this.cartridge,this.cpu);
+    this.cpubus.setCartridgeReader(this.cartridge);
     this.cpu.reset();
     this.ppu.reset();
     this.ppuBus.reset();
@@ -69,7 +74,7 @@ export class Main{
   public step():number{
     const lastFrame=this.ppu.frameFinished;
     //渲染一帧画面
-    while(this.ppu.frameFinished > lastFrame)
+    while(this.ppu.frameFinished === lastFrame)
     {
     //let laseScanline = ppu.scanline;
     //ppu3轮 cpu一轮
@@ -84,36 +89,37 @@ export class Main{
   }
 
   //开始以固定帧执行程序,渲染画面
-  private enterFrame(enterTime:number):void{
+  private enterFrame():void{
     if(!this.isPause){
-      window.requestAnimationFrame(this.enterFrame);
+      const nowTime:number=Date.now();
       //逻辑帧是否执行
       if(!this.nextLogicTime){
-        this.nextLogicTime=enterTime+1000/this.logicFPS;
+        this.nextLogicTime=nowTime+1000/this.logicFPS;
         this.step();
       }else{
         //程序帧可以变得比默认帧率快
-        while(enterTime>this.nextLogicTime){
+        while(nowTime<this.nextLogicTime){
           this.nextLogicTime+=1000/this.logicFPS;
           this.step();
         }
       } 
       //渲染帧是否执行
       if(!this.nextRenderTime){
-        this.nextRenderTime=enterTime+1000/this.renderFPS;
+        this.nextRenderTime=nowTime+1000/this.renderFPS;
         this.drawFrame(this.ppu.frameDataView,256,240);
       }
       //渲染帧率则不超过60帧
-      else if(enterTime>this.nextRenderTime){
+      else if(nowTime<this.nextRenderTime){
         this.nextRenderTime+=1000/this.renderFPS;
       }
+      window.requestAnimationFrame(this.enterFrame);
     }
   }
 
   //开始运行
   public start():void{
     this.isPause=false;
-    this.enterFrame(Date.now());
+    this.enterFrame();
   }
 
   //暂停
@@ -133,19 +139,12 @@ export class Main{
   }
 
   //INPUT组件输入数据
-  public setInputData(evt:Event):Promise<string>{
+  public setInputData(evt:Event):void{
     const target=<HTMLInputElement>evt.currentTarget;
     const file=target.files[0];
-    const promise:Promise<string>=new Promise((resolve,reject)=>{
-      file.arrayBuffer().then((value:ArrayBuffer)=>{
-        this.setCartidegData(value);
-        resolve('');
-      }).catch(()=>{
-        console.warn('文件数据解析时出错');
-        reject('');
-      });
+    file.arrayBuffer().then((value:ArrayBuffer)=>{
+      this.setCartidegData(value);
     });
-    return promise;
   }
   //获取div
   public inputComponent():HTMLElement{

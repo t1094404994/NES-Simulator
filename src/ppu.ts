@@ -263,6 +263,11 @@ export class Ppu{
   private cpu:Cpu;
 
   constructor(){
+    this.regCtrl=new PpuCtrl();
+    this.regMask=new PpuMask();
+    this.regStatus=new PpuStatus();
+    this.tmpAddress=new REGV();
+    this.dataAddress=new REGV();
     this.initPalette();
   }
 
@@ -466,7 +471,6 @@ export class Ppu{
 
   //PPU主循环
   public step():void{
-    console.log('进入PPU主循环');
     if (this.scanline === -1){
       // PreRender扫描线
       if (this.cycle === 1){
@@ -624,6 +628,8 @@ export class Ppu{
         this.frameDataView.setUint8(point,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][0]);
         this.frameDataView.setUint8(point+1,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][1]);
         this.frameDataView.setUint8(point+2,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][2]);
+        this.frameDataView.setUint8(point+3,255);
+        console.log('设置一个点');
       }
       if (this.cycle === 257 && this.regMask.getShowbkg()){
         const yInTile:number = this.dataAddress.getYfine();

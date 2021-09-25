@@ -12,12 +12,20 @@ export class CpuBus{
   private cartridgeReader:CartridgeReader;
   //PPU
   private ppu:Ppu
-  //初始化CPU总线
-  public init(_cartridgeReader:CartridgeReader,_cpu:Cpu):void{
-    this.cartridgeReader=_cartridgeReader;
-    this.cpu=_cpu;
+  constructor(){
     this.cpuRam=new CpuRam();
-    console.log('初始化CPU总线`');
+  }
+
+  public setCartridgeReader(_cartridgeReader:CartridgeReader):void{
+    this.cartridgeReader=_cartridgeReader;
+  }
+
+  public setCpu(_cpu:Cpu):void{
+    this.cpu=_cpu;
+  }
+
+  public setPpu(_ppu:Ppu):void{
+    this.ppu=_ppu;
   }
 
   //清除
@@ -25,6 +33,8 @@ export class CpuBus{
     this.cpuRam.clear();
     this.cpuRam=null;
     this.cartridgeReader=null;
+    this.cpu=null;
+    this.ppu=null;
   }
 
   /**
