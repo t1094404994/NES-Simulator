@@ -24,7 +24,7 @@ class StatusFlag{
    * @param bit 哪一位
    * @param bool true为1，false为0
    */
-  public SpecifieBit(value:number,bit:number,bool:boolean){
+  public SpecifieBit(value:number,bit:number,bool:boolean):number{
     if(bool){
       //加减运算符大于位移，位移大于位与/位或
       value=value|1<<bit;
@@ -32,6 +32,7 @@ class StatusFlag{
       //按位非跟加减运算符同级
       value=value&~(1<<bit);
     }
+    return value;
   }
 
   /**
@@ -45,43 +46,43 @@ class StatusFlag{
 
   // 进位标记(Carry flag)
   public setC(bool:boolean):void{
-    this.SpecifieBit(this.data,0,bool);
+    this.data=this.SpecifieBit(this.data,0,bool);
   }
 
   // 零标记 (Zero flag)
   public setZ(bool:boolean):void{
-    this.SpecifieBit(this.data,1,bool);
+    this.data=this.SpecifieBit(this.data,1,bool);
   }
 
   // 禁止中断(Irq disabled flag)
   public setI(bool:boolean):void{
-    this.SpecifieBit(this.data,2,bool);
+    this.data=this.SpecifieBit(this.data,2,bool);
   }
 
   //NES没有使用
   // 十进制模式(Decimal mode flag)
   public setD(bool:boolean):void{
-    this.SpecifieBit(this.data,3,bool);
+    this.data=this.SpecifieBit(this.data,3,bool);
   }
 
   // 软件中断(BRK flag)
   public setB(bool:boolean):void{
-    this.SpecifieBit(this.data,4,bool);
+    this.data=this.SpecifieBit(this.data,4,bool);
   }
 
   // 保留标记(Reserved) 一直为1
   public setU(bool:boolean):void{
-    this.SpecifieBit(this.data,5,bool);
+    this.data=this.SpecifieBit(this.data,5,bool);
   }
 
   // 溢出标记(Overflow  flag)
   public setV(bool:boolean):void{
-    this.SpecifieBit(this.data,6,bool);
+    this.data=this.SpecifieBit(this.data,6,bool);
   }
 
   // 符号标记(Sign flag)
   public setN(bool:boolean):void{
-    this.SpecifieBit(this.data,7,bool);
+    this.data=this.SpecifieBit(this.data,7,bool);
   }
 
   public getC():number{
@@ -191,7 +192,7 @@ export class Cpu{
     //设置中断
     this.regSf.setI(true);
     this.regSf.setU(true);
-    console.log('重置/初始化CPU');
+    //console.log('重置/初始化CPU');
   }
 
   public setCpuBus(_cpuBus:CpuBus):void{
@@ -228,24 +229,25 @@ export class Cpu{
       //根据操作码对应的寻址方式，找到操作数的地址
       const instr:Instruction=this.opcodeMapTable[this.opcode];
       const modeCycles:number=this.impAddressMode(instr.addressMode);
-      console.log('当前地址:'+this.address.toString(16));
+      //console.log('当前地址:'+this.address.toString(16));
       //执行操作码
       const instrCycles:number=this.impInstructions(instr.name);
       //计算这条指令花费的周期
       this.cyclesWait=instr.cycleCnt;
-      console.log('当前pc寄存器:'+this.regPc.toString(16));
+      //console.log('当前pc寄存器:'+this.regPc.toString(16));
       //跨页的话周期要多加
       if(instrCycles < 0) this.cyclesWait += (-instrCycles);
       else this.cyclesWait += (instrCycles & modeCycles);
       this.regSf.setU(true);
+      //console.log('opcode:'+this.opcode+'address:'+this.address+'regPC:'+this.regPc);
     }
     this.cyclesWait--;
-    this.clockCount--;
+    this.clockCount++;
   }
 
   //CPU执行可屏蔽中断
   public irq():void{
-    console.log('CPU执行可屏蔽中断');
+    //console.log('CPU执行可屏蔽中断');
     if (this.regSf.getI() === 0){ //判断中断是否被屏蔽了。0为允许IRQ中断，1为屏蔽
       //把Program Counter和Status寄存器放到栈里面
       this.stackPush(this.regPc >> 8);
@@ -263,15 +265,15 @@ export class Cpu{
 
   //CPU执行不可屏蔽中断
   public nmi():void{
-    console.log('CPU执行不可屏蔽中断');
+    //console.log('CPU执行不可屏蔽中断');
     this.stackPush(this.regPc >> 8);
     this.stackPush(this.regPc & 0xFF);
     this.regSf.setB(false);
     this.regSf.setU(true);
     this.regSf.setI(true);
     this.stackPush(this.regSf.getData());
-    const lo:number=this.cpuBus.getValue(0xFFFE);
-    const hi:number=this.cpuBus.getValue(0xFFFF)<<8;
+    const lo:number=this.cpuBus.getValue(0xFFFA);
+    const hi:number=this.cpuBus.getValue(0xFFFB)<<8;
     this.regPc =hi+lo;
     //有些是8
     this.cyclesWait = 7;
@@ -279,7 +281,7 @@ export class Cpu{
 
   //执行DMA时，CPU会被阻塞513或514个周期
   public dmaSleep():void{
-    console.log('执行DMA');
+    //console.log('执行DMA');
     if (this.clockCount & 1){
       //奇数周期需要sleep 514个CPU时钟周期
       this.cyclesWait += 514;
@@ -296,7 +298,7 @@ export class Cpu{
 
   //数据入栈
   private stackPush(value:number):void{
-    if(this.regSp===0){
+    if(this.regSp===-1){
       throw new Error('栈溢出');
     }
     this.cpuBus.setValue(this.regSp+this.regSpOffSet,value);
@@ -309,8 +311,11 @@ export class Cpu{
       console.warn('空栈');
       return 0;
     }
+    if(this.regSp<=10){
+      console.log('在哪');
+    }
     this.regSp++;
-    this.cpuBus.getValue(this.regSp+this.regSpOffSet);
+    return this.cpuBus.getValue(this.regSp+this.regSpOffSet);
   }
 
   //寻址模式
@@ -578,9 +583,7 @@ export class Cpu{
     //1.把Program Counter接下来的指令位置和Status寄存器放到栈里面
     this.regPc++;
     //手动模拟溢出
-    if(this.regPc>0xffff){
-      this.regPc=0;
-    }
+    this.regPc=this.regPc&0xffff;
     //分别把高八位和低八位推入栈
     this.stackPush(this.regPc>>8);
     this.stackPush(this.regPc&0xff);
@@ -764,7 +767,7 @@ export class Cpu{
   private JSR():number{
     this.regPc--;
     //溢出截取
-    this.regPc=this.regPc&0xff;
+    this.regPc=this.regPc&0xffff;
     this.stackPush(this.regPc>>8);
     this.stackPush(this.regPc&0xff);
     this.regPc=this.address;
@@ -1019,6 +1022,7 @@ export class Cpu{
   //将变址寄存器X内容送入栈指针SP
   private TXS():number{
     this.regSp=this.regX;
+    console.log('栈指针被修改'+this.regSp);
     return 0;
   }
 
@@ -1032,7 +1036,7 @@ export class Cpu{
 
   //执行寻址
   private impAddressMode(mode:AddressMode):number{
-    console.log('开始执行寻址:'+mode);
+    //console.log('开始执行寻址:'+mode);
     switch(mode){
     case AddressMode.IMP:
       return this.IMP();
@@ -1066,7 +1070,7 @@ export class Cpu{
 
   //执行指令
   private impInstructions(name:string):number{
-    console.log('开始执行命令:'+name);
+    //console.log('开始执行命令:'+name);
     switch (name) {
     case 'ADC':
       return this.ADC();

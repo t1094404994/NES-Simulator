@@ -41,13 +41,18 @@ export class Mapper0 implements Mapper{
   public cpuReadRpg(busAddress:number):number{
     //因为卡带数据在总线中从0x8000 二进制即10000000 0000000  所以只需把最高位截掉，即可得到相对于卡带的位置 
     //TODO注意，文件头不占据总线中的位置 不确定
-    let address:number=busAddress&0x7fff;
+    let address:number;
+    if(this.cartridge.romNum===1){
+      address=busAddress&0x3fff;
+    }else{
+      address=busAddress&0x7fff;
+    }
     const maxAddress:number=this.rpgDataView.byteLength-1;
     if(address>maxAddress){
       console.warn('cpuReadRpg'+'总线地址:'+busAddress+'超过RPG ROM的最大值'+maxAddress);
       address=maxAddress;
     }
-    console.log('从RPG ROM的'+address.toString(16)+' 取得'+this.rpgDataView.getUint8(address));
+    //console.log('从RPG ROM的'+address.toString(16)+' 取得'+this.rpgDataView.getUint8(address));
     return this.rpgDataView.getUint8(address);
   }
   //CPU写入程序数据

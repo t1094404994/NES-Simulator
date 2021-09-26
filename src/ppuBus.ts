@@ -121,7 +121,7 @@ export class PpuBus{
   }
 
   //设置卡带
-  public setCartridge(_cartridgeReader:CartridgeReader):void{
+  public setCartridgeReader(_cartridgeReader:CartridgeReader):void{
     this.cartridgeReader=_cartridgeReader;
   }
   //从PPU总线获取数据

@@ -73,6 +73,16 @@ export class CpuBus{
         return this.ppu.readData();
       }
     }
+    //TODO
+    else if(busAddress===0x4016){
+      return 0;
+    }
+    else if(busAddress===0x4017){
+      return 0;
+    }
+    else if(busAddress >= 0x4000 && busAddress < 0x6000){
+      return 0;
+    }
     //从增加的RAM中获取
     else if(busAddress>=0x6000&&busAddress<0x8000){
       if(this.cartridgeReader.hasAddedRom){
@@ -82,14 +92,17 @@ export class CpuBus{
         return 0;
       }
     }
-    //从卡带中获取
-    else if(busAddress>=0x8000){
+    else{
       return this.cartridgeReader.mapper.cpuReadRpg(busAddress);
     }
-    else{
-      console.warn('getValue时的CPU总线地址发生溢出');
-      return 0;
-    }
+    //从卡带中获取
+    // else if(busAddress>=0x8000){
+    //   return this.cartridgeReader.mapper.cpuReadRpg(busAddress);
+    // }
+    // else{
+    //   console.warn('getValue时的CPU总线地址发生溢出');
+    //   return 0;
+    // }
   }
 
   /**
@@ -104,7 +117,7 @@ export class CpuBus{
     }
     //PPU寄存器
     else if(busAddress>=0x2000&&busAddress<0x4000){
-      console.log('CPU写入数值'+value+'到PPU寄存器'+busAddress.toString(16));
+      //console.log('CPU写入数值'+value+'到PPU寄存器'+busAddress.toString(16));
       switch(busAddress&0x2007){
       case 0x2000:
         this.ppu.writeCtrl(value);
@@ -134,12 +147,21 @@ export class CpuBus{
     }
     //DMA CPU直接把256字节精灵RAM的引用数据传入PPU
     else if(busAddress===0x4014){
-      console.log('CPU直接把'+value.toString(16)+'起始的精灵RAM的引用数据传入PPU');
+      //console.log('CPU直接把'+value.toString(16)+'起始的精灵RAM的引用数据传入PPU');
       this.cpu.dmaSleep();
       const page:DataView=this.getPage(value);
       this.ppu.oamDma(page);
     }
     //输入
+    else if(busAddress===0x4016){
+      //
+    }
+    else if(busAddress >= 0x4014 && busAddress < 0x4017){
+      //
+    }
+    else if(busAddress >= 0x4000 && busAddress < 0x6000){
+      //
+    }
     //扩展RAM
     else if(busAddress>=0x6000&&busAddress<0x8000){
       if(this.cartridgeReader.hasAddedRom){
@@ -147,11 +169,15 @@ export class CpuBus{
       }
     }
     //卡带
-    else if(busAddress>=0x8000){
+    else{
       this.cartridgeReader.mapper.cpuWriteRpg(busAddress,value);
-    }else{
-      console.warn('setValue时的CPU总线地址发生溢出');
     }
+    // //卡带
+    // else if(busAddress>=0x8000){
+    //   this.cartridgeReader.mapper.cpuWriteRpg(busAddress,value);
+    // }else{
+    //   console.warn('setValue时的CPU总线地址发生溢出');
+    // }
     //
   }
 

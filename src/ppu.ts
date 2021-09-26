@@ -499,7 +499,7 @@ export class Ppu{
         let bkgcolorInPalette=0;
         let sprcolorInPalette=0;
         let sprBehindBackground = true;
-        //背景地址,精灵地址
+        //背景调色版地址,精灵调色板地址
         let bkgPaletteAddress=0;
         let sprPaletteAddress=0;
 
@@ -629,7 +629,7 @@ export class Ppu{
         this.frameDataView.setUint8(point+1,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][1]);
         this.frameDataView.setUint8(point+2,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][2]);
         this.frameDataView.setUint8(point+3,255);
-        console.log('设置一个点');
+        //console.log('设置一个点');
       }
       if (this.cycle === 257 && this.regMask.getShowbkg()){
         const yInTile:number = this.dataAddress.getYfine();
