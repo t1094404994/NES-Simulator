@@ -52,7 +52,6 @@ export class Mapper0 implements Mapper{
       console.warn('cpuReadRpg'+'总线地址:'+busAddress+'超过RPG ROM的最大值'+maxAddress);
       address=maxAddress;
     }
-    //console.log('从RPG ROM的'+address.toString(16)+' 取得'+this.rpgDataView.getUint8(address));
     return this.rpgDataView.getUint8(address);
   }
   //CPU写入程序数据

@@ -68,6 +68,9 @@ export class CartridgeReader{
     if(this.mapperId===0){
       this.mapper=new Mapper0(this,this.vramNum!==0);
       this.mapper.nametableMirror=this.dataView.getUint8(6) & 0xb;
+    }else{
+      throw new Error('目前不支持'+this.mapperId);
+      
     }
     //MAPPER
     return true;

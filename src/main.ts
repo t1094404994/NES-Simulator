@@ -18,7 +18,9 @@ export class Main{
   private cartridge:CartridgeReader;
   //画布
   private canvas:HTMLCanvasElement;
-  private div:HTMLDivElement;
+  private canvasDiv:HTMLDivElement;
+  //上传框
+  private inputDiv:HTMLDivElement;
   private input:HTMLInputElement;
 
   //一些配置
@@ -57,6 +59,8 @@ export class Main{
     this.step=this.step.bind(this);
     this.setInputData=this.setInputData.bind(this);
     this.enterFrame=this.enterFrame.bind(this);
+    this.onDropover=this.onDropover.bind(this);
+    this.onDrag=this.onDrag.bind(this);
   }
 
   //设置卡带数据
@@ -152,25 +156,56 @@ export class Main{
   }
   //获取div
   public inputComponent():HTMLElement{
-    if(!this.div){
-      this.div= document.createElement('div');
+    if(!this.inputDiv){
+      this.inputDiv= document.createElement('div');
     }
     if(!this.input){
       this.input= document.createElement('input');
       this.input.type='file';
       this.input.name='点击上传文件';
       this.input.addEventListener('change',this.setInputData);
-      this.div.appendChild(this.input);
+      this.inputDiv.appendChild(this.input);
     }
-    return this.div;
+    return this.inputDiv;
   }
-  
+
   //获取Canvas
-  public canvasComponent():HTMLCanvasElement{
+  public canvasComponent():HTMLElement{
     if(!this.canvas.getContext){
       throw new Error('哦豁,你的浏览器不支持canvas');
     }
-    return this.canvas;
+    if(!this.canvasDiv){
+      this.canvasDiv=document.createElement('div');
+      this.canvasDiv.appendChild(this.canvas);
+      this.canvasDiv.addEventListener('drop',this.onDropover);
+      this.canvasDiv.addEventListener('dragEnter',this.onDrag);
+      this.canvasDiv.addEventListener('dragover',this.onDrag);
+    }
+    return this.canvasDiv;
+  }
+
+  //必须要取消默认事件，才能触发drop
+  public onDrag(evt:DragEvent):void{
+    if(evt){
+      evt.preventDefault();
+      evt.stopPropagation();
+    }
+  }
+
+  //拖入
+  public onDropover(evt:DragEvent):void{
+    //停止默认行为和冒泡
+    if(evt){
+      evt.preventDefault();
+      evt.stopPropagation();
+    }
+    //这里指需要单个文件，不需要items和reader
+    if(evt.dataTransfer.files&&evt.dataTransfer.files[0]){
+      const file:File=evt.dataTransfer.files[0];
+      file.arrayBuffer().then((value:ArrayBuffer)=>{
+        this.setCartidegData(value);
+      });
+    }
   }
 }
 //document.body.appendChild(inputComponent());

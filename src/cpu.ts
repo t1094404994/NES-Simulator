@@ -164,6 +164,7 @@ export class Cpu{
   private opcodeMapTable:Array<Instruction>;
   //等待循环
   private cyclesWait:number;
+  private testCycles=0;
   //CPU循环计数
   private clockCount:number;
   //CUP总线的引用
@@ -239,7 +240,8 @@ export class Cpu{
       if(instrCycles < 0) this.cyclesWait += (-instrCycles);
       else this.cyclesWait += (instrCycles & modeCycles);
       this.regSf.setU(true);
-      //console.log('opcode:'+this.opcode+'address:'+this.address+'regPC:'+this.regPc);
+      this.testCycles+=this.cyclesWait;
+      //console.log('opcode:'+this.opcode+'/'+instr.name+'    address:'+this.address+'regPC:'+this.regPc+'周期:'+this.testCycles);
     }
     this.cyclesWait--;
     this.clockCount++;
@@ -298,7 +300,7 @@ export class Cpu{
 
   //数据入栈
   private stackPush(value:number):void{
-    if(this.regSp===-1){
+    if(this.regSp===0){
       throw new Error('栈溢出');
     }
     this.cpuBus.setValue(this.regSp+this.regSpOffSet,value);
@@ -310,9 +312,6 @@ export class Cpu{
     if(this.regSp===0xff){
       console.warn('空栈');
       return 0;
-    }
-    if(this.regSp<=10){
-      console.log('在哪');
     }
     this.regSp++;
     return this.cpuBus.getValue(this.regSp+this.regSpOffSet);
@@ -340,7 +339,7 @@ export class Cpu{
 
   //零页绝对寻址 Zero-page Absolute Addressing
   private ZP0():number{
-    this.address=this.cpuBus.getValue(this.regPc++);
+    this.address=this.cpuBus.getValue(this.regPc++)&0xff;
     return 0;
   }
 
@@ -434,7 +433,7 @@ export class Cpu{
     //1.先取走addr_res对应的数值
     const operand:number =this.cpuBus.getValue(this.address);
     //2.加法计算，并写入标志位
-    const sum:number = this.regA + operand + this.regSf.getC();
+    const sum:number = (this.regA + operand + this.regSf.getC())&0xffff;
     this.regSf.setC(sum >= 0x100);
     this.regSf.setV(Boolean((this.regA ^ sum) & (operand ^ sum) & 0x80));
     //reg_sf.set_v((~((uint16_t)reg_a ^ (uint16_t)operand) & ((uint16_t)reg_a ^ (uint16_t)sum)) & 0x0080);
@@ -449,7 +448,7 @@ export class Cpu{
     this.regA&=this.cpuBus.getValue(this.address);
     this.regSf.setZ(this.regA === 0);
     this.regSf.setN(Boolean(this.regA & 0x80));
-    return 0;
+    return 1;
   }
 
   //累加器A, 或者存储器单元算术按位左移一位. 最高位移动到C, 最低位0
@@ -655,12 +654,12 @@ export class Cpu{
   //比较储存器值与累加器A.
   private CMP():number{
     const operand:number= this.cpuBus.getValue(this.address);
-    //模拟八位运算
+    //模拟8bit无符号运算 即使temp是16bit无符号数字，结果也一样
     const temp=(this.regA -operand)&0xff;
     this.regSf.setC(this.regA >= operand);
     this.regSf.setZ(temp=== 0);
     this.regSf.setN((temp & 0x0080)!==0);
-    return 0;
+    return 1;
   }
 
   //比较储存器值与变址寄存器X
@@ -722,7 +721,7 @@ export class Cpu{
     this.regA = this.regA ^ operand;
     this.regSf.setZ(this.regA === 0);
     this.regSf.setN((this.regA & 0x0080)!==0);
-    return 0;
+    return 1;
   }
 
   //存储器单元内容+1,
@@ -732,8 +731,8 @@ export class Cpu{
     //溢出截取
     res=res&0xff;
     this.cpuBus.setValue(this.address,res);
-    this.regSf.setZ(this.regA === 0);
-    this.regSf.setN((this.regA & 0x0080)!==0);
+    this.regSf.setZ((res & 0x00FF)=== 0);
+    this.regSf.setN((res & 0x0080)!==0);
     return 0;
   }
 
@@ -780,7 +779,7 @@ export class Cpu{
     this.regA=operand;
     this.regSf.setZ(this.regA === 0);
     this.regSf.setN((this.regA & 0x0080)!==0);
-    return 0;
+    return 1;
   }
 
   //由存储器取数送入变址寄存器X
@@ -789,7 +788,7 @@ export class Cpu{
     this.regX=operand;
     this.regSf.setZ(this.regX === 0);
     this.regSf.setN((this.regX & 0x0080)!==0);
-    return 0;
+    return 1;
   }
 
   //由存储器取数送入变址寄存器Y
@@ -798,7 +797,7 @@ export class Cpu{
     this.regY=operand;
     this.regSf.setZ(this.regY === 0);
     this.regSf.setN((this.regY & 0x0080)!==0);
-    return 0;
+    return 1;
   }
 
   //累加器A, 或者存储器单元逻辑按位右移一位. 最低位回移进C, 最高位变0, 
@@ -843,7 +842,7 @@ export class Cpu{
     this.regA=operand|this.regA;
     this.regSf.setZ(this.regA === 0);
     this.regSf.setN((this.regA & 0x0080)!==0);
-    return 0;
+    return 1;
   }
 
   //累加器A压入栈顶
@@ -940,14 +939,14 @@ export class Cpu{
 
   //从累加器减去存储器和进位标志C,结果送累加器A
   private SBC():number{
-    //1.先取走addr_res对应的数值
     const operand:number= this.cpuBus.getValue(this.address);
-    const sub:number= (this.regA - operand - this.regSf.getC())&0xff;
+    const c:number=!this.regSf.getC()?1:0;
+    const sub:number= (this.regA - operand -c)&0xffff;
     this.regSf.setC(!(sub & 0x100));
     this.regSf.setV(((this.regA ^ sub) & ((~operand) ^ sub) & 0x80)!==0);
-    this.regSf.setZ(sub=== 0);
+    this.regSf.setZ((sub&0xff)===0);
     this.regSf.setN((sub & 0x80)!==0);
-    this.regA = sub & 0x00FF;
+    this.regA = sub & 0xff;
     return 1;
   }
 
@@ -1005,7 +1004,7 @@ export class Cpu{
 
   //将栈指针SP内容送入变址寄存器X
   private TSX():number{
-    this.regX=this.regSf.getData();
+    this.regX=this.regSp;
     this.regSf.setZ(this.regX===0);
     this.regSf.setN((this.regX&0x80)!==0);
     return 0;
@@ -1022,7 +1021,6 @@ export class Cpu{
   //将变址寄存器X内容送入栈指针SP
   private TXS():number{
     this.regSp=this.regX;
-    console.log('栈指针被修改'+this.regSp);
     return 0;
   }
 
