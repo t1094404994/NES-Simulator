@@ -57,8 +57,8 @@ export class Oamram{
     if(bit3&(1<<6)) sprite.flipX=false;
     else sprite.flipX=true;
     //y轴翻转：当O7等于1时翻转，等于0时不翻转
-    if(bit3&(1<<7)) sprite.flipY=false;
-    else sprite.flipY=true;
+    if(bit3&(1<<7)) sprite.flipY=true;
+    else sprite.flipY=false;
     sprite.locX=this.dataView.getUint8(offset+3);
     return sprite;
   }
@@ -77,8 +77,8 @@ export class Oamram{
     if(bit3&(1<<6)) sprite.flipX=false;
     else sprite.flipX=true;
     //y轴翻转：当O7等于1时翻转，等于0时不翻转
-    if(bit3&(1<<7)) sprite.flipY=false;
-    else sprite.flipY=true;
+    if(bit3&(1<<7)) sprite.flipY=true;
+    else sprite.flipY=false;
     sprite.locX=this.dataView.getUint8(offset+3);
     return sprite;
   }

@@ -241,7 +241,11 @@ export class Cpu{
       else this.cyclesWait += (instrCycles & modeCycles);
       this.regSf.setU(true);
       this.testCycles+=this.cyclesWait;
-      //console.log('opcode:'+this.opcode+'/'+instr.name+'    address:'+this.address+'regPC:'+this.regPc+'周期:'+this.testCycles);
+      //27039270  27039470
+      // if(this.testCycles>=27039070){
+      //   console.log('opcode:'+this.opcode+'/'+instr.name+'    address:'+this.address+'regPC:'+this.regPc+'周期:'+this.testCycles);
+      //   console.log('状态寄存器:'+this.regSf.getData()+'8194: '+this.cpuBus.getValue(8194));
+      // }
     }
     this.cyclesWait--;
     this.clockCount++;
@@ -901,7 +905,7 @@ export class Cpu{
     if (this.opcodeMapTable[this.opcode].addressMode ===AddressMode.IMP){
       //IMP(Accumulator)累加器寻址模式下，直接赋值给A寄存器
       const temp:number= this.regA>> 1 | this.regSf.getC()<< 7; //ROR是循环右移操作，会将C标志位放到循环右移结果的第一位
-      this.regSf.setC(temp >= 0x100);
+      this.regSf.setC((this.regA&1)!==0);
       this.regSf.setZ((temp & 0x00FF) === 0);
       this.regSf.setN((temp & 0x80)!==0);
       this.regA = temp & 0x00FF;
@@ -909,7 +913,7 @@ export class Cpu{
       //其他模式下，先取走操作符，再对操作符赋值，最后再写回去
       const operand:number=this.cpuBus.getValue(this.address);
       const temp:number=operand >> 1 |this.regSf.getC()<< 7;
-      this.regSf.setC(temp >= 0x100);
+      this.regSf.setC((operand&1)!==0);
       this.regSf.setZ((temp & 0x00FF) === 0);
       this.regSf.setN((temp & 0x80)!==0);
       this.cpuBus.setValue(this.address, temp & 0x00FF);

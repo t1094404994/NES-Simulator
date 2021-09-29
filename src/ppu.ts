@@ -578,7 +578,7 @@ export class Ppu{
               }else{
                 //渲染8*8的精灵
                 oamSprite = this.oamram.getOneSprite(sprDx);
-                if (x - oamSprite.locX < 0 || x - oamSprite.locY >= 8)
+                if (x - oamSprite.locX < 0 || x - oamSprite.locX >= 8)
                   continue;
                 //找出这个像素的的图案表的颜色代码
                 let xInTile = (x - oamSprite.locX)&0xff;
