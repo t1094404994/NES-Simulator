@@ -96,29 +96,30 @@ export class Main{
   //开始以固定帧执行程序,渲染画面
   private enterFrame():void{
     if(!this.isPause){
-      // const nowTime:number=Date.now();
-      // //逻辑帧是否执行
-      // if(!this.nextLogicTime){
-      //   this.nextLogicTime=nowTime+1000/this.logicFPS;
-      //   this.step();
-      // }else{
-      //   //程序帧可以变得比默认帧率快
-      //   while(nowTime>this.nextLogicTime){
-      //     this.nextLogicTime+=1000/this.logicFPS;
-      //     this.step();
-      //   }
-      // } 
-      // //渲染帧是否执行
-      // if(!this.nextRenderTime){
-      //   this.nextRenderTime=nowTime+1000/this.renderFPS;
-      //   this.drawFrame(this.ppu.frameDataView,256,240);
-      // }
-      // //渲染帧率则不超过60帧
-      // else if(nowTime>this.nextRenderTime){
-      //   this.nextRenderTime+=1000/this.renderFPS;
-      // }
-      this.step();
-      this.drawFrame(this.ppu.frameDataView,256,240);
+      const nowTime:number=Date.now();
+      //逻辑帧是否执行
+      if(!this.nextLogicTime){
+        this.nextLogicTime=nowTime+1000/this.logicFPS;
+        this.step();
+      }else{
+        //程序帧可以变得比默认帧率快
+        while(nowTime>this.nextLogicTime){
+          this.nextLogicTime+=1000/this.logicFPS;
+          this.step();
+        }
+      } 
+      //渲染帧是否执行
+      if(!this.nextRenderTime){
+        this.nextRenderTime=nowTime+1000/this.renderFPS;
+        this.drawFrame(this.ppu.frameDataView,256,240);
+      }
+      //渲染帧率则不超过60帧
+      else if(nowTime>this.nextRenderTime){
+        this.nextRenderTime+=1000/this.renderFPS;
+        this.drawFrame(this.ppu.frameDataView,256,240);
+      }
+      // this.step();
+      // this.drawFrame(this.ppu.frameDataView,256,240);
       window.requestAnimationFrame(this.enterFrame);
     }
   }
