@@ -1,4 +1,4 @@
-import {Mapper,CartridgeReader} from './cartridge';
+import {Mapper,CartridgeReader} from '../cartridge';
 export class Mapper0 implements Mapper{
   //TODO如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 卡带上为什么会没有图案表？
   private chRamPtr:ArrayBuffer;

@@ -3,6 +3,7 @@ import { CpuBus } from './cpuBus';
 import {CartridgeReader} from './cartridge';
 import { Ppu } from './ppu';
 import { PpuBus } from './ppuBus';
+import { Controller } from './controller';
 
 //主控接口
 export class Main{
@@ -16,6 +17,9 @@ export class Main{
   private ppu:Ppu;
   //卡带
   private cartridge:CartridgeReader;
+  //控制器
+  private controllerL:Controller;
+  private controllerR:Controller;
   //画布
   private canvas:HTMLCanvasElement;
   private canvasDiv:HTMLDivElement;
@@ -36,16 +40,35 @@ export class Main{
   //是否暂停
   private isPause:boolean;
   constructor(){
+    this.initNes();
+    this.initConfig();
+    this.setCartidegData=this.setCartidegData.bind(this);
+    this.step=this.step.bind(this);
+    this.setInputData=this.setInputData.bind(this);
+    this.enterFrame=this.enterFrame.bind(this);
+    this.onDropover=this.onDropover.bind(this);
+    this.onDrag=this.onDrag.bind(this);
+    this.onkeyboardEvent=this.onkeyboardEvent.bind(this);
+  }
+
+  private initNes():void{
     this.cpubus=new CpuBus();
     this.cpu=new Cpu();
     this.ppuBus=new PpuBus();
     this.ppu=new Ppu();
+    this.controllerL=new Controller();
+    this.controllerR=new Controller();
     this.cpu.setCpuBus(this.cpubus);
     this.ppu.setCpu(this.cpu);
     this.ppu.setPpuBus(this.ppuBus);
     this.cpubus.setCpu(this.cpu);
     this.cpubus.setPpu(this.ppu);
+    this.cpubus.setControllerL(this.controllerL);
+    this.cpubus.setControllerR(this.controllerR);
     this.cartridge=new CartridgeReader();
+  }
+
+  private initConfig():void{
     this.canvas=document.createElement('canvas');
     this.canvas.width=256;
     this.canvas.height=256;
@@ -55,22 +78,20 @@ export class Main{
     this.nextLogicTime=0;
     this.nextRenderTime=0;
     this.isPause=true;
-    this.setCartidegData=this.setCartidegData.bind(this);
-    this.step=this.step.bind(this);
-    this.setInputData=this.setInputData.bind(this);
-    this.enterFrame=this.enterFrame.bind(this);
-    this.onDropover=this.onDropover.bind(this);
-    this.onDrag=this.onDrag.bind(this);
   }
 
   //设置卡带数据
   public setCartidegData(data:ArrayBuffer):void{
+    this.removeControllerEvent();
     this.cartridge.resetData(data);
     this.cpubus.setCartridgeReader(this.cartridge);
     this.ppuBus.setCartridgeReader(this.cartridge);
     this.cpu.reset();
     this.ppu.reset();
     this.ppuBus.reset();
+    this.controllerL.reset(true);
+    this.controllerR.reset(false);
+    this.addControllerEvent();
     //测试
     this.start();
   }
@@ -207,6 +228,34 @@ export class Main{
         this.setCartidegData(value);
       });
     }
+  }
+
+  //移除元素后，移除监听
+  public disposeComponent():void{
+    this.canvasDiv.removeEventListener('drop',this.onDropover);
+    this.canvasDiv.removeEventListener('dragEnter',this.onDrag);
+    this.canvasDiv.removeEventListener('dragover',this.onDrag);
+    this.input.removeEventListener('change',this.setInputData);
+  }
+
+  public onkeyboardEvent(event:KeyboardEvent):void{
+    this.controllerL.setKeyState(event.code,event.type==='keydown'?true:false);
+    this.controllerR.setKeyState(event.code,event.type==='keydown'?true:false);
+  }
+
+  //控制器监听
+  public addControllerEvent():void{
+    window.addEventListener('keydown',this.onkeyboardEvent);
+    window.addEventListener('keyup',this.onkeyboardEvent);
+  }
+  public removeControllerEvent():void{
+    window.removeEventListener('keydown',this.onkeyboardEvent);
+    window.removeEventListener('keyup',this.onkeyboardEvent);
+  }
+
+  //销毁
+  public dispose():void{
+    //
   }
 }
 //document.body.appendChild(inputComponent());

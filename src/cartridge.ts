@@ -1,4 +1,4 @@
-import { Mapper0 } from './mapper0';
+import { Mapper0 } from './mapper/mapper0';
 
 type ReadData=(address:number)=>number;
 type WriteData=(address:number,value:number)=>void;

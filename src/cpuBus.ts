@@ -2,6 +2,7 @@ import { CpuRam } from './cpuRam';
 import {CartridgeReader} from './cartridge';
 import { Cpu } from './cpu';
 import { Ppu } from './ppu';
+import { Controller } from './controller';
 //CUP总线
 export class CpuBus{
   //最初的2kb RAM
@@ -11,7 +12,10 @@ export class CpuBus{
   //卡带数据
   private cartridgeReader:CartridgeReader;
   //PPU
-  private ppu:Ppu
+  private ppu:Ppu;
+  //手柄
+  private controllerL:Controller;
+  private controllerR:Controller;
   constructor(){
     this.cpuRam=new CpuRam();
   }
@@ -28,6 +32,12 @@ export class CpuBus{
     this.ppu=_ppu;
   }
 
+  public setControllerL(controller:Controller):void{
+    this.controllerL=controller;
+  }
+  public setControllerR(controller:Controller):void{
+    this.controllerR=controller;
+  }
   //清除
   public clear():void{
     this.cpuRam.clear();
@@ -73,12 +83,12 @@ export class CpuBus{
         return this.ppu.readData();
       }
     }
-    //TODO
+    //手柄
     else if(busAddress===0x4016){
-      return 0;
+      return this.controllerL.getKeyState();
     }
     else if(busAddress===0x4017){
-      return 0;
+      return this.controllerR.getKeyState();
     }
     else if(busAddress >= 0x4000 && busAddress < 0x6000){
       return 0;
@@ -152,9 +162,10 @@ export class CpuBus{
       const page:DataView=this.getPage(value);
       this.ppu.oamDma(page);
     }
-    //输入
+    //手柄
     else if(busAddress===0x4016){
-      //
+      this.controllerL.setStrobe(value);
+      this.controllerR.setStrobe(value);
     }
     else if(busAddress >= 0x4014 && busAddress < 0x4017){
       //
