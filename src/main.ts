@@ -27,6 +27,12 @@ export class Main{
   private inputDiv:HTMLDivElement;
   private input:HTMLInputElement;
 
+  //音频上下文
+  private audio:AudioContext;
+
+  //渲染数据
+  private imageData:ImageData;
+
   //一些配置
   //程序逻辑帧率 60的正整数倍 
   private logicBaseFPS:number;
@@ -66,6 +72,8 @@ export class Main{
     this.cpubus.setControllerL(this.controllerL);
     this.cpubus.setControllerR(this.controllerR);
     this.cartridge=new CartridgeReader();
+    this.audio=new AudioContext();
+    this.imageData=new ImageData(256,240);
   }
 
   private initConfig():void{
@@ -159,13 +167,14 @@ export class Main{
   //渲染一帧数据
   private drawFrame(data:DataView,width:number,height:number):void{
     const ctx:CanvasRenderingContext2D=this.canvas.getContext('2d');
-    const imageData:ImageData=ctx.createImageData(width,height);
+    //const imageData:ImageData=ctx.createImageData(width,height);
     const len:number=width*height*4;
     for(let i=0;i<len;i++){
-      imageData.data[i]=data.getUint8(i);
+      this.imageData.data[i]=data.getUint8(i);
     }
-    ctx.putImageData(imageData,0,0);
-    console.log('渲染一帧画面');
+    ctx.putImageData(this.imageData,0,0);
+    this.testAudioPlay();
+    //console.log('渲染一帧画面');
   }
 
   //INPUT组件输入数据
@@ -230,12 +239,39 @@ export class Main{
     }
   }
 
+  //测试自己创建数据，喂数据给 audio
+  public testAudioPlay():void{
+    const AudioContext = window.AudioContext;
+    if(AudioContext){
+      //创建音频上下文
+      const audioCtx:AudioContext=this.audio;
+      const allFrame:number=audioCtx.sampleRate/this.renderFPS;
+      //双声道
+      const channels=2;
+      //创建音频数据源
+      const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,audioCtx.sampleRate);
+      for(let i=0;i<channels;i++){
+        const buffer:Float32Array=audiobuffer.getChannelData(i);
+        for(let i=0;i<allFrame;i++){
+          //[-1,1]
+          buffer[i]=Math.random()*2-1;
+        }
+      }
+      //创建音频资源节点
+      const source:AudioBufferSourceNode=audioCtx.createBufferSource();
+      source.buffer=audiobuffer;
+      //把节点连接到声音环境
+      source.connect(audioCtx.destination);
+      source.start();
+    }
+  }
+
   //移除元素后，移除监听
   public disposeComponent():void{
-    this.canvasDiv.removeEventListener('drop',this.onDropover);
-    this.canvasDiv.removeEventListener('dragEnter',this.onDrag);
-    this.canvasDiv.removeEventListener('dragover',this.onDrag);
-    this.input.removeEventListener('change',this.setInputData);
+    // this.canvasDiv.removeEventListener('drop',this.onDropover);
+    // this.canvasDiv.removeEventListener('dragEnter',this.onDrag);
+    // this.canvasDiv.removeEventListener('dragover',this.onDrag);
+    // this.input.removeEventListener('change',this.setInputData);
   }
 
   public onkeyboardEvent(event:KeyboardEvent):void{

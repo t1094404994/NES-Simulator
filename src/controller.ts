@@ -36,6 +36,11 @@ export class Controller{
     this.map=left?baseLeftMap:baseRightMap;
   }
 
+  //自定义按键映射
+  public setMap(_map:Map):void{
+    this.map=_map;
+  }
+
   //设置选通装填
   public setStrobe(data:number):void{
     const old:boolean=this.strobe;
