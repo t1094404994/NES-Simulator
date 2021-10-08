@@ -4,6 +4,7 @@ import {CartridgeReader} from './cartridge';
 import { Ppu } from './ppu';
 import { PpuBus } from './ppuBus';
 import { Controller } from './controller';
+import { Apu } from './apu';
 
 //主控接口
 export class Main{
@@ -17,6 +18,8 @@ export class Main{
   private ppu:Ppu;
   //卡带
   private cartridge:CartridgeReader;
+  //APU
+  private apu:Apu;
   //控制器
   private controllerL:Controller;
   private controllerR:Controller;
@@ -62,17 +65,19 @@ export class Main{
     this.cpu=new Cpu();
     this.ppuBus=new PpuBus();
     this.ppu=new Ppu();
+    this.apu=new Apu();
     this.controllerL=new Controller();
     this.controllerR=new Controller();
     this.cpu.setCpuBus(this.cpubus);
     this.ppu.setCpu(this.cpu);
     this.ppu.setPpuBus(this.ppuBus);
+    this.apu.setCpuBus(this.cpubus);
     this.cpubus.setCpu(this.cpu);
     this.cpubus.setPpu(this.ppu);
+    this.cpubus.setApu(this.apu);
     this.cpubus.setControllerL(this.controllerL);
     this.cpubus.setControllerR(this.controllerR);
     this.cartridge=new CartridgeReader();
-    this.audio=new AudioContext();
     this.imageData=new ImageData(256,240);
   }
 
@@ -96,6 +101,7 @@ export class Main{
     this.ppuBus.setCartridgeReader(this.cartridge);
     this.cpu.reset();
     this.ppu.reset();
+    this.apu.reset();
     this.ppuBus.reset();
     this.controllerL.reset(true);
     this.controllerR.reset(false);
@@ -110,14 +116,16 @@ export class Main{
     //渲染一帧画面
     while(this.ppu.frameFinished === lastFrame)
     {
-    //let laseScanline = ppu.scanline;
-    //ppu3轮 cpu一轮
+      const laseScanline:number = this.ppu.scanline;
+      //ppu3轮 cpu一轮
       this.ppu.step();
       this.ppu.step();
       this.ppu.step();
       this.cpu.step();
-    // if ((ppu.scanline === 65 || ppu.scanline === 130 || ppu.scanline === 195 || ppu.scanline === 260) && ppu.scanline !== laseScanline)
-    //   Apu.run_1cycle();
+      if ((this.ppu.scanline === 65 || this.ppu.scanline === 130 || this.ppu.scanline === 195 || this.ppu.scanline === 260) && this.ppu.scanline !== laseScanline){
+        this.apu.step();
+        this.audioPlay();
+      }
     }
     return 0;
   }
@@ -147,8 +155,6 @@ export class Main{
         this.nextRenderTime+=1000/this.renderFPS;
         this.drawFrame(this.ppu.frameDataView,256,240);
       }
-      // this.step();
-      // this.drawFrame(this.ppu.frameDataView,256,240);
       window.requestAnimationFrame(this.enterFrame);
     }
   }
@@ -173,7 +179,6 @@ export class Main{
       this.imageData.data[i]=data.getUint8(i);
     }
     ctx.putImageData(this.imageData,0,0);
-    this.testAudioPlay();
     //console.log('渲染一帧画面');
   }
 
@@ -240,21 +245,25 @@ export class Main{
   }
 
   //测试自己创建数据，喂数据给 audio
-  public testAudioPlay():void{
+  public audioPlay():void{
     const AudioContext = window.AudioContext;
     if(AudioContext){
+      const allFrame:number=this.apu.seqLen;
+      if(allFrame===0){
+        return;
+      }
       //创建音频上下文
+      if(this.audio===undefined) this.audio=new AudioContext();
       const audioCtx:AudioContext=this.audio;
-      const allFrame:number=audioCtx.sampleRate/this.renderFPS;
       //双声道
-      const channels=2;
+      const channels=1;
       //创建音频数据源
-      const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,audioCtx.sampleRate);
+      const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,441000);
       for(let i=0;i<channels;i++){
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         for(let i=0;i<allFrame;i++){
           //[-1,1]
-          buffer[i]=Math.random()*2-1;
+          buffer[i]=(this.apu.seqDataView.getUint8(i)/128)-1;
         }
       }
       //创建音频资源节点

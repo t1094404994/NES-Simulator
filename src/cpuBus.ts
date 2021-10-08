@@ -3,6 +3,7 @@ import {CartridgeReader} from './cartridge';
 import { Cpu } from './cpu';
 import { Ppu } from './ppu';
 import { Controller } from './controller';
+import { Apu } from './apu';
 //CUP总线
 export class CpuBus{
   //最初的2kb RAM
@@ -13,6 +14,9 @@ export class CpuBus{
   private cartridgeReader:CartridgeReader;
   //PPU
   private ppu:Ppu;
+
+  //APU
+  private apu:Apu;
   //手柄
   private controllerL:Controller;
   private controllerR:Controller;
@@ -28,8 +32,16 @@ export class CpuBus{
     this.cpu=_cpu;
   }
 
+  public getCpu():Cpu{
+    return this.cpu;
+  }
+
   public setPpu(_ppu:Ppu):void{
     this.ppu=_ppu;
+  }
+
+  public setApu(_apu:Apu):void{
+    this.apu=_apu;
   }
 
   public setControllerL(controller:Controller):void{
@@ -82,6 +94,9 @@ export class CpuBus{
       case 0x2007:
         return this.ppu.readData();
       }
+    }
+    else if(busAddress===0x4015){
+      return this.apu.read4015();
     }
     //手柄
     else if(busAddress===0x4016){
@@ -167,10 +182,11 @@ export class CpuBus{
       this.controllerL.setStrobe(value);
       this.controllerR.setStrobe(value);
     }
-    else if(busAddress >= 0x4014 && busAddress < 0x4017){
+    else if(busAddress >= 0x4000 && busAddress < 0x4018){
       //
+      this.apu.setData(busAddress-0x4000,value);
     }
-    else if(busAddress >= 0x4000 && busAddress < 0x6000){
+    else if(busAddress >= 0x4018 && busAddress < 0x6000){
       //
     }
     //扩展RAM
