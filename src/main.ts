@@ -124,7 +124,7 @@ export class Main{
       this.cpu.step();
       if ((this.ppu.scanline === 65 || this.ppu.scanline === 130 || this.ppu.scanline === 195 || this.ppu.scanline === 260) && this.ppu.scanline !== laseScanline){
         this.apu.step();
-        this.audioPlay();
+        //this.audioPlay();
       }
     }
     return 0;
@@ -255,6 +255,27 @@ export class Main{
       //创建音频上下文
       if(this.audio===undefined) this.audio=new AudioContext();
       const audioCtx:AudioContext=this.audio;
+      //TEST
+      // readFile('./14850.wav',(err,buffer)=>{
+      //   audioCtx.decodeAudioData(buffer).then((buff)=>{
+      //     const source:AudioBufferSourceNode=audioCtx.createBufferSource();
+      //     source.buffer=buff;
+      //     //把节点连接到声音环境
+      //     source.connect(audioCtx.destination);
+      //     source.start();
+      //   });
+      // });
+      // readFile('14850.wav').then((buffer:any) =>{
+      //   audioCtx.decodeAudioData(buffer).then((buff)=>{
+      //     const source:AudioBufferSourceNode=audioCtx.createBufferSource();
+      //     source.buffer=buff;
+      //     //把节点连接到声音环境
+      //     source.connect(audioCtx.destination);
+      //     source.start();
+      //   });
+      // });
+
+
       //双声道
       const channels=1;
       //创建音频数据源
@@ -263,7 +284,8 @@ export class Main{
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         for(let i=0;i<allFrame;i++){
           //[-1,1]
-          buffer[i]=(this.apu.seqDataView.getUint8(i)/128)-1;
+          //buffer[i]=(this.apu.seqDataView.getUint8(i)/128)-1;
+          buffer[i]=0.2;
         }
       }
       //创建音频资源节点
