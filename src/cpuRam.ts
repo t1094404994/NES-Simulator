@@ -15,6 +15,11 @@ export class CpuRam{
     this.ramView=new DataView(this.ram);
   }
 
+  public clear():void{
+    this.ramView=null;
+    this.ram=null;
+  }
+
   /**
    * 设置RAM的数据
    * @param address 16bit地址 
@@ -44,5 +49,10 @@ export class CpuRam{
       throw new Error('地址超过最大值');
     }
     return this.ramView.getUint8(address);
+  }
+
+  //获取一页的数据视图
+  public getPage(address:number):DataView{
+    return new DataView(this.ram,address,256);
   }
 }

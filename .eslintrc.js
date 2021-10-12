@@ -19,6 +19,7 @@ module.exports = {
     'indent': [2,2],//使用2格缩进
     'eqeqeq': [2,'always'],//使用强判断
     'semi':[2,'always'],//行尾需要分号
-    'quotes':[2,'single'] //使用单引号
+    'quotes':[2,'single'], //使用单引号
+    '@typescript-eslint/no-var-requires':[0]
   }
 };
