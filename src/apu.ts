@@ -30,7 +30,7 @@ const NoisePeriodMap:Array<number> = [4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 
 const DPCMPeriodMap:Array<number>= [428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54];
 
 //44.1k hz
-const SAMPLE_PER_SEC=44100;
+const SAMPLE_PER_SEC=441000;
 //CPU频率
 const CPU_CYCLE_PER_SEC=1789773;
 //一次需要的采样数

@@ -5,6 +5,7 @@ import { Ppu } from './ppu';
 import { PpuBus } from './ppuBus';
 import { Controller } from './controller';
 import { Apu } from './apu';
+import {RegionZoom} from './util/math';
 
 //主控接口
 export class Main{
@@ -108,6 +109,7 @@ export class Main{
     this.addControllerEvent();
     //测试
     this.start();
+    //this.testAudioPlay();
   }
 
   //主循环
@@ -124,7 +126,7 @@ export class Main{
       this.cpu.step();
       if ((this.ppu.scanline === 65 || this.ppu.scanline === 130 || this.ppu.scanline === 195 || this.ppu.scanline === 260) && this.ppu.scanline !== laseScanline){
         this.apu.step();
-        //this.audioPlay();
+        this.audioPlay();
       }
     }
     return 0;
@@ -255,27 +257,6 @@ export class Main{
       //创建音频上下文
       if(this.audio===undefined) this.audio=new AudioContext();
       const audioCtx:AudioContext=this.audio;
-      //TEST
-      // readFile('./14850.wav',(err,buffer)=>{
-      //   audioCtx.decodeAudioData(buffer).then((buff)=>{
-      //     const source:AudioBufferSourceNode=audioCtx.createBufferSource();
-      //     source.buffer=buff;
-      //     //把节点连接到声音环境
-      //     source.connect(audioCtx.destination);
-      //     source.start();
-      //   });
-      // });
-      // readFile('14850.wav').then((buffer:any) =>{
-      //   audioCtx.decodeAudioData(buffer).then((buff)=>{
-      //     const source:AudioBufferSourceNode=audioCtx.createBufferSource();
-      //     source.buffer=buff;
-      //     //把节点连接到声音环境
-      //     source.connect(audioCtx.destination);
-      //     source.start();
-      //   });
-      // });
-
-
       //双声道
       const channels=1;
       //创建音频数据源
@@ -284,16 +265,57 @@ export class Main{
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         for(let i=0;i<allFrame;i++){
           //[-1,1]
-          //buffer[i]=(this.apu.seqDataView.getUint8(i)/128)-1;
-          buffer[i]=0.2;
+          buffer[i]=RegionZoom(this.apu.seqDataView.getUint8(i),0,255,-1,1);
         }
       }
       //创建音频资源节点
       const source:AudioBufferSourceNode=audioCtx.createBufferSource();
       source.buffer=audiobuffer;
       //把节点连接到声音环境
-      source.connect(audioCtx.destination);
+      source.connect(audioCtx.destination);      
       source.start();
+    }
+  }
+
+  public testAudioPlay():void{
+    const AudioContext = window.AudioContext;
+    if(AudioContext){
+      const allFrame=220500;
+      const arr=[277,311,370,415,554,622,740,831,1109,1245,1480,1661];
+      for(let i=0;i<arr.length;i++){
+        setTimeout(()=>{
+          const k=441000/arr[i];
+          let next=0;
+          //创建音频上下文
+          if(this.audio===undefined) this.audio=new AudioContext();
+          const audioCtx:AudioContext=this.audio;
+          //双声道
+          const channels=2;
+          //创建音频数据源
+          const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,441000);
+          for(let i=0;i<channels;i++){
+            const buffer:Float32Array=audiobuffer.getChannelData(i);
+            for(let i=0;i<allFrame;i++){
+              //[-1,1]
+              if(next++>k){
+                next=0;
+              }
+              if(next<k/2){
+                buffer[i]=1;
+              }else{
+                buffer[i]=-1;
+              }
+              //buffer[i]=Math.sin(RegionZoom(next,0,k,-Math.PI/2,Math.PI/2));
+            }
+          }
+          //创建音频资源节点
+          const source:AudioBufferSourceNode=audioCtx.createBufferSource();
+          source.buffer=audiobuffer;
+          //把节点连接到声音环境
+          source.connect(audioCtx.destination);      
+          source.start();
+        },i*500);
+      }
     }
   }
 
@@ -325,4 +347,3 @@ export class Main{
     //
   }
 }
-//document.body.appendChild(inputComponent());
