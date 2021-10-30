@@ -1,6 +1,7 @@
 //声音处理
 
 import { CpuBus } from './cpuBus';
+import {RegionZoom} from './util/math';
 
 //长度计数器
 const LengthCounterMap:Array<number>=[
@@ -30,7 +31,7 @@ const NoisePeriodMap:Array<number> = [4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 
 const DPCMPeriodMap:Array<number>= [428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54];
 
 //44.1k hz
-const SAMPLE_PER_SEC=441000;
+const SAMPLE_PER_SEC=44100;
 //CPU频率
 const CPU_CYCLE_PER_SEC=1789773;
 //一次需要的采样数
@@ -446,7 +447,7 @@ class SquareWave{
       //这个采样点在方波的位置
       //C++小数转整数会截掉小数
       const seqLoc:number =(seqDiff + this.seqLocOld) - Math.floor((seqDiff + this.seqLocOld));
-      const seqVal:number = SquareWaveMap[this.regSquare.getDuty()][Math.floor(seqLoc* 8)]?1:0;
+      const seqVal:number = SquareWaveMap[this.regSquare.getDuty()][Math.floor(seqLoc* 8)]?1:-1;
       //计算这个采样点的音量
       let volume:number;
       if (mute){
@@ -460,7 +461,7 @@ class SquareWave{
       else{
         volume = this.envelopeValue;
       }
-      this.squareSeqDataView.setUint8(this.curSeqIndex,seqVal * volume);
+      this.squareSeqDataView.setUint8(this.curSeqIndex,(seqVal * volume)&0xff);
       //收尾操作
       this.curSeqIndex++;
       if (sampleLoc === Math.floor((clockCnt + 1) * SAMPLE_PER_SEC / 240)){
@@ -577,7 +578,7 @@ class TriangleWave{
       const seqDiff:number = cpuLocDiff * 1.0 / (32 * (this.currPeriod + 1)); //这个采样点与时钟触发时相差了多少个方波周期
       const seqLoc:number= (seqDiff + this.seqLocOld) - Math.floor(seqDiff + this.seqLocOld); //这个采样点在方波的位置
       const volume:number = TriangleWaveMap[Math.floor(seqLoc * 32)];
-      this.triangleSeqDataView.setUint8(this.curSeqIndex,volume);
+      this.triangleSeqDataView.setUint8(this.curSeqIndex,volume&0xff);
       //收尾操作
       this.curSeqIndex++;
       if (sampleLoc === Math.floor((clockCnt + 1) * SAMPLE_PER_SEC / 240)){
@@ -719,7 +720,7 @@ class Noise{
       }else{ //使用包络音量
         volume = this.envelopeVal;
       }
-      this.noiseSeqDataView.setUint8(this.curSeqIndex,d0*volume);
+      this.noiseSeqDataView.setUint8(this.curSeqIndex,(d0*volume)&0xff);
       //收尾操作
       this.curSeqIndex++;
     }
@@ -825,7 +826,7 @@ class DPCM{
           this.bitsRemain = 8;
         }
         if (this.bitsRemain){
-          //把当前样本字节的音频播放完成
+          //把当前样本字节的音频播放完成 0-127
           if (this.currByte & 1){
             if (this.outputLevel <= 125)
               this.outputLevel += 2;
@@ -847,7 +848,7 @@ class DPCM{
         }
       }
       //收尾操作
-      this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel);
+      this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel&0xff);
       this.curSeqIndex++;
     }
   }
@@ -877,6 +878,7 @@ export class Apu{
   public seqLen:number;
   //
   public clockCnt:number;
+  public play:boolean;
 
   //CPU总线
   private cpuBus:CpuBus;
@@ -904,6 +906,7 @@ export class Apu{
     this.frameInterrupt=false;
     this.clockCnt=0;
     this.seqLen=0;
+    this.play=false;
   }
 
   public clearSqe():void{
@@ -1053,14 +1056,21 @@ export class Apu{
     this.noise.play(this.clockCnt, this.statusReg.getNoise());
     //TODO
     this.dpcm.play(this.clockCnt, this.statusReg.getNoise());
+    this.play=false;
     if (this.clockCnt % 4 === 3){
       //混音
       this.seqLen= this.square0.curSeqIndex;
       for (let t= 0; t <= this.seqLen - 1; t++){
         let volumeTotal= 0;
+        //每个值-15至15
+        //方波1+方波2占22.56%
         volumeTotal += 0.00752 * (this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
+        //三角波占12.765% 噪声波占7.41% DPCM占42.545%
         volumeTotal += 0.00851 * this.triangle.triangleSeqDataView.getUint8(t) + 0.00494 * this.noise.noiseSeqDataView.getUint8(t) + 0.00335 * this.dpcm.dpcmSeqDataView.getUint8(t);
+        // volumeTotal+=0.2256*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
+        // volumeTotal+= 0.12765 * this.triangle.triangleSeqDataView.getInt8(t) + 0.741 * this.noise.noiseSeqDataView.getInt8(t) + 0.42545 * this.dpcm.dpcmSeqDataView.getInt8(t);
         this.seqDataView.setUint8(t,Math.floor(volumeTotal * 256)&0xff);
+        //this.seqDataView.setInt8(t,Math.floor(volumeTotal)&0xff);
       }
       //将各个波形中的一些缓存数据清零
       this.square0.clearSquareSeq();
@@ -1073,6 +1083,7 @@ export class Apu{
       this.triangle.curSeqIndex = 0;
       this.noise.curSeqIndex = 0;
       this.dpcm.curSeqIndex = 0;
+      this.play=true;
     }
   }
 }

@@ -34,6 +34,9 @@ export class Main{
   //音频上下文
   private audio:AudioContext;
 
+  private audioSource:AudioBufferSourceNode;
+  private audioSourceEnd:boolean;
+
   //渲染数据
   private imageData:ImageData;
 
@@ -92,6 +95,7 @@ export class Main{
     this.nextLogicTime=0;
     this.nextRenderTime=0;
     this.isPause=true;
+    this.audioSourceEnd=true;
   }
 
   //设置卡带数据
@@ -145,6 +149,7 @@ export class Main{
         while(nowTime>this.nextLogicTime){
           this.nextLogicTime+=1000/this.logicFPS;
           this.step();
+          //TODO
         }
       } 
       //渲染帧是否执行
@@ -260,20 +265,24 @@ export class Main{
       //双声道
       const channels=1;
       //创建音频数据源
-      const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,441000);
+      const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,44100);
       for(let i=0;i<channels;i++){
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         for(let i=0;i<allFrame;i++){
           //[-1,1]
-          buffer[i]=RegionZoom(this.apu.seqDataView.getUint8(i),0,255,-1,1);
+          buffer[i]=RegionZoom(this.apu.seqDataView.getInt8(i),-127,127,-1,1);
         }
       }
       //创建音频资源节点
-      const source:AudioBufferSourceNode=audioCtx.createBufferSource();
-      source.buffer=audiobuffer;
+      this.audioSource=audioCtx.createBufferSource();
+      this.audioSource.buffer=audiobuffer;
       //把节点连接到声音环境
-      source.connect(audioCtx.destination);      
-      source.start();
+      this.audioSource.connect(audioCtx.destination);
+      this.audioSource.start();
+      this.audioSourceEnd=false;
+      this.audioSource.addEventListener('ended',()=>{
+        this.audioSourceEnd=true;
+      });
     }
   }
 
