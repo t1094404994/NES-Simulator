@@ -30,7 +30,6 @@ export class Main{
   //上传框
   private inputDiv:HTMLDivElement;
   private input:HTMLInputElement;
-
   //音频上下文
   private audio:AudioContext;
 
@@ -130,9 +129,9 @@ export class Main{
       this.cpu.step();
       if ((this.ppu.scanline === 65 || this.ppu.scanline === 130 || this.ppu.scanline === 195 || this.ppu.scanline === 260) && this.ppu.scanline !== laseScanline){
         this.apu.step();
-        this.audioPlay();
       }
     }
+    this.audioPlay();
     return 0;
   }
 
@@ -145,7 +144,7 @@ export class Main{
         this.nextLogicTime=nowTime+1000/this.logicFPS;
         this.step();
       }else{
-        //程序帧可以变得比默认帧率快
+        //逻辑帧可以变得比默认帧率快
         while(nowTime>this.nextLogicTime){
           this.nextLogicTime+=1000/this.logicFPS;
           this.step();
@@ -175,6 +174,9 @@ export class Main{
   //暂停
   public puase():void{
     this.isPause=true;
+    //不重置，则从暂停恢复后就会运行暂停时间内的代码
+    this.nextLogicTime=0;
+    this.nextRenderTime=0;
   }
 
   //渲染一帧数据
@@ -263,7 +265,7 @@ export class Main{
       if(this.audio===undefined) this.audio=new AudioContext();
       const audioCtx:AudioContext=this.audio;
       //双声道
-      const channels=1;
+      const channels=2;
       //创建音频数据源
       const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,44100);
       for(let i=0;i<channels;i++){

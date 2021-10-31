@@ -385,7 +385,8 @@ class SquareWave{
         this.envelopeDivider = this.regSquare.getVolume();
         if (this.envelopeValue === 0&&this.regSquare.getHalt()){
           this.envelopeValue = 15;
-        }else{
+        }
+        else if(this.envelopeValue>0){
           this.envelopeValue--;
         }
       }else{
@@ -436,12 +437,13 @@ class SquareWave{
         this.curSeqIndex++;
         continue;
       }
-      else if (this.currPeriod <= 7 || this.currPeriod >= 0x800)
+      else if (this.currPeriod <= 7 || this.currPeriod >= 0x800){
         mute = true;
-        //计算这个采样点属于方波的什么位置
+      }
+      //计算这个采样点属于方波的什么位置 CPU频率的什么位置
       const cpuLoc:number = Math.floor(sampleLoc * CPU_CYCLE_PER_SEC / SAMPLE_PER_SEC);
       //这个采样点与时钟触发时的CPU周期间隔数
-      const cpuLocDiff:number= cpuLoc - cpuLocOld;
+      const cpuLocDiff:number= Math.floor(cpuLoc - cpuLocOld);
       //这个采样点与时钟触发时相差了多少个方波周期
       const seqDiff:number = cpuLocDiff * 1.0 / (16 * (this.currPeriod + 1));
       //这个采样点在方波的位置
@@ -1067,10 +1069,13 @@ export class Apu{
         volumeTotal += 0.00752 * (this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
         //三角波占12.765% 噪声波占7.41% DPCM占42.545%
         volumeTotal += 0.00851 * this.triangle.triangleSeqDataView.getUint8(t) + 0.00494 * this.noise.noiseSeqDataView.getUint8(t) + 0.00335 * this.dpcm.dpcmSeqDataView.getUint8(t);
-        // volumeTotal+=0.2256*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
-        // volumeTotal+= 0.12765 * this.triangle.triangleSeqDataView.getInt8(t) + 0.741 * this.noise.noiseSeqDataView.getInt8(t) + 0.42545 * this.dpcm.dpcmSeqDataView.getInt8(t);
+        //test
+        //volumeTotal+=0.2256*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
+        //volumeTotal+= 0.12765 * this.triangle.triangleSeqDataView.getInt8(t) + 0.741 * this.noise.noiseSeqDataView.getInt8(t) + 0.42545 * this.dpcm.dpcmSeqDataView.getInt8(t);
+        //
         this.seqDataView.setUint8(t,Math.floor(volumeTotal * 256)&0xff);
-        //this.seqDataView.setInt8(t,Math.floor(volumeTotal)&0xff);
+        //test
+        //this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
       }
       //将各个波形中的一些缓存数据清零
       this.square0.clearSquareSeq();
