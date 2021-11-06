@@ -127,6 +127,7 @@ export class Main{
       this.ppu.step();
       this.ppu.step();
       this.cpu.step();
+      //FC渲染一帧画面，会产生四次音频数据
       if ((this.ppu.scanline === 65 || this.ppu.scanline === 130 || this.ppu.scanline === 195 || this.ppu.scanline === 260) && this.ppu.scanline !== laseScanline){
         this.apu.step();
       }

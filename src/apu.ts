@@ -1,7 +1,6 @@
 //声音处理
 
 import { CpuBus } from './cpuBus';
-import {RegionZoom} from './util/math';
 
 //长度计数器
 const LengthCounterMap:Array<number>=[
@@ -423,8 +422,9 @@ class SquareWave{
       this.sweepDivider--;
     }
   }
+
   //播放时
-  public play(clockCnt:number,enable:boolean):void{
+  public playOld(clockCnt:number,enable:boolean):void{
     //
     const cpuLocOld:number =Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
     for (let sampleLoc = Math.floor(clockCnt * SAMPLE_PER_SEC / 240 + 1); sampleLoc <= (clockCnt + 1) * SAMPLE_PER_SEC / 240; sampleLoc++){
@@ -469,6 +469,50 @@ class SquareWave{
       if (sampleLoc === Math.floor((clockCnt + 1) * SAMPLE_PER_SEC / 240)){
         this.seqLocOld = seqLoc;
       }
+    }
+  }
+
+  //播放时 test
+  public play(clockCnt:number,enable:boolean):void{
+    //const cpuLocOld:number =Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
+    //采样周期
+    const cycle:number=Math.floor((16*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC));
+    const sinle:number=cycle/8;
+    for (let sampleLoc = 0; sampleLoc <SAMPLE_PER_SEC / 240; sampleLoc++){
+      //计算这个采样点是否要静音
+      let mute = false;
+      if ((!enable) || (this.lenCounter === 0)){
+        mute = true;
+        this.squareSeqDataView.setUint8(this.curSeqIndex,0);
+        this.seqLocOld=0;
+        this.curSeqIndex++;
+        continue;
+      }
+      else if (this.currPeriod <= 7 || this.currPeriod >= 0x800){
+        mute = true;
+      }
+      
+      if(this.seqLocOld===cycle){
+        this.seqLocOld=0;
+      }
+      const seqVal:number=SquareWaveMap[this.regSquare.getDuty()][Math.floor(this.seqLocOld/sinle)]?1:-1;
+      //计算这个采样点的音量
+      let volume:number;
+      if (mute){
+        volume = 0;
+      }
+      //使用固定音量
+      else if (this.regSquare.getVolume()){
+        volume = this.regSquare.getEnvelope()?1:0;
+      }
+      //使用包络音量
+      else{
+        volume = this.envelopeValue;
+      }
+      this.squareSeqDataView.setUint8(this.curSeqIndex,(seqVal * volume)&0xff);
+      //收尾操作
+      this.curSeqIndex++;
+      this.seqLocOld++;
     }
   }
 }
@@ -1066,16 +1110,16 @@ export class Apu{
         let volumeTotal= 0;
         //每个值-15至15
         //方波1+方波2占22.56%
-        volumeTotal += 0.00752 * (this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
+        //volumeTotal += 0.00752 * (this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
         //三角波占12.765% 噪声波占7.41% DPCM占42.545%
-        volumeTotal += 0.00851 * this.triangle.triangleSeqDataView.getUint8(t) + 0.00494 * this.noise.noiseSeqDataView.getUint8(t) + 0.00335 * this.dpcm.dpcmSeqDataView.getUint8(t);
+        //volumeTotal += 0.00851 * this.triangle.triangleSeqDataView.getUint8(t) + 0.00494 * this.noise.noiseSeqDataView.getUint8(t) + 0.00335 * this.dpcm.dpcmSeqDataView.getUint8(t);
         //test
-        //volumeTotal+=0.2256*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
+        volumeTotal+=3*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
         //volumeTotal+= 0.12765 * this.triangle.triangleSeqDataView.getInt8(t) + 0.741 * this.noise.noiseSeqDataView.getInt8(t) + 0.42545 * this.dpcm.dpcmSeqDataView.getInt8(t);
         //
-        this.seqDataView.setUint8(t,Math.floor(volumeTotal * 256)&0xff);
+        //this.seqDataView.setUint8(t,Math.floor(volumeTotal * 256)&0xff);
         //test
-        //this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
+        this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
       }
       //将各个波形中的一些缓存数据清零
       this.square0.clearSquareSeq();
