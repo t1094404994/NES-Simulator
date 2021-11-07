@@ -62,7 +62,7 @@ class SquareRegister{
     return (this.data[0]>>5&1)===1;
   }
 
-  //获取是否包络byte0  bit4
+  //获取是否使用固定音量,否则使用包络音量 byte0  bit4 
   public getEnvelope():boolean{
     return (this.data[0]>>4&1)===1;
   }
@@ -382,8 +382,10 @@ class SquareWave{
     }else{
       if (this.envelopeDivider === 0){
         this.envelopeDivider = this.regSquare.getVolume();
-        if (this.envelopeValue === 0&&this.regSquare.getHalt()){
-          this.envelopeValue = 15;
+        if (this.envelopeValue === 0){
+          if(this.regSquare.getHalt()){
+            this.envelopeValue = 15;
+          }
         }
         else if(this.envelopeValue>0){
           this.envelopeValue--;
@@ -456,8 +458,8 @@ class SquareWave{
         volume = 0;
       }
       //使用固定音量
-      else if (this.regSquare.getVolume()){
-        volume = this.regSquare.getEnvelope()?1:0;
+      else if (this.regSquare.getEnvelope()){
+        volume = this.regSquare.getVolume();
       }
       //使用包络音量
       else{
@@ -476,7 +478,7 @@ class SquareWave{
   public play(clockCnt:number,enable:boolean):void{
     //const cpuLocOld:number =Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
     //采样周期
-    const cycle:number=Math.floor((16*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC));
+    const cycle:number=(16*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC);
     const sinle:number=cycle/8;
     for (let sampleLoc = 0; sampleLoc <SAMPLE_PER_SEC / 240; sampleLoc++){
       //计算这个采样点是否要静音
@@ -492,7 +494,7 @@ class SquareWave{
         mute = true;
       }
       
-      if(this.seqLocOld===cycle){
+      if(this.seqLocOld>=cycle){
         this.seqLocOld=0;
       }
       const seqVal:number=SquareWaveMap[this.regSquare.getDuty()][Math.floor(this.seqLocOld/sinle)]?1:-1;
@@ -502,8 +504,8 @@ class SquareWave{
         volume = 0;
       }
       //使用固定音量
-      else if (this.regSquare.getVolume()){
-        volume = this.regSquare.getEnvelope()?1:0;
+      else if (this.regSquare.getEnvelope()){
+        volume = this.regSquare.getVolume();
       }
       //使用包络音量
       else{
@@ -1070,7 +1072,6 @@ export class Apu{
       switch (this.clockCnt % 4){
       case 0:
         this.onEnvelopeLinearClock();
-        this.onEnvelopeLinearClock();
         break;
       case 1:
         this.onLengthSweepClock();
@@ -1114,7 +1115,7 @@ export class Apu{
         //三角波占12.765% 噪声波占7.41% DPCM占42.545%
         //volumeTotal += 0.00851 * this.triangle.triangleSeqDataView.getUint8(t) + 0.00494 * this.noise.noiseSeqDataView.getUint8(t) + 0.00335 * this.dpcm.dpcmSeqDataView.getUint8(t);
         //test
-        volumeTotal+=3*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
+        volumeTotal+=1*(this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
         //volumeTotal+= 0.12765 * this.triangle.triangleSeqDataView.getInt8(t) + 0.741 * this.noise.noiseSeqDataView.getInt8(t) + 0.42545 * this.dpcm.dpcmSeqDataView.getInt8(t);
         //
         //this.seqDataView.setUint8(t,Math.floor(volumeTotal * 256)&0xff);

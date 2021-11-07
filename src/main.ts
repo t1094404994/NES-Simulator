@@ -283,9 +283,9 @@ export class Main{
       this.audioSource.connect(audioCtx.destination);
       this.audioSource.start();
       this.audioSourceEnd=false;
-      this.audioSource.addEventListener('ended',()=>{
-        this.audioSourceEnd=true;
-      });
+      // this.audioSource.addEventListener('ended',()=>{
+      //   this.audioSourceEnd=true;
+      // });
     }
   }
 
