@@ -387,9 +387,12 @@ class SquareWave{
             this.envelopeValue = 15;
           }
         }
-        else if(this.envelopeValue>0){
+        else{
           this.envelopeValue--;
         }
+        // else if(this.envelopeValue>0){
+        //   this.envelopeValue--;
+        // }
       }else{
         this.envelopeDivider--;
       }
@@ -609,7 +612,7 @@ class TriangleWave{
       this.linearRestart = false;
   } 
   //播放
-  public play(clockCnt:number,enable:boolean):void{
+  public playOld(clockCnt:number,enable:boolean):void{
     //TODO
     const cpuLocOld:number= Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
     for (let sampleLoc:number=Math.floor(clockCnt * SAMPLE_PER_SEC / 240 + 1); sampleLoc <= (clockCnt + 1) * SAMPLE_PER_SEC / 240; sampleLoc++){
@@ -632,6 +635,29 @@ class TriangleWave{
       if (sampleLoc === Math.floor((clockCnt + 1) * SAMPLE_PER_SEC / 240)){
         this.seqLocOld = seqLoc;
       }
+    }
+  }
+
+  //test
+  public play(clockCnt:number,enable:boolean):void{
+    //采样周期
+    const cycle:number=(32*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC);
+    const sinle:number=cycle/32;
+    for(let sampleLoc=0;sampleLoc<SAMPLE_PER_SEC/240;sampleLoc++){
+      //计算这个采样点是否要静音. 长度计数器和线性计数器中，只要有一个为零，就静音
+      if ((!enable) || (this.lenCounter === 0) || (this.linearCounter === 0)){
+        this.triangleSeqDataView.setUint8(this.curSeqIndex,0);
+        this.seqLocOld = 0;
+        this.curSeqIndex++;
+        continue;
+      }
+      if(this.seqLocOld>=cycle){
+        this.seqLocOld=0;
+      }
+      const seqVal:number=TriangleWaveMap[Math.floor(this.seqLocOld/sinle)]-8;
+      this.triangleSeqDataView.setUint8(this.curSeqIndex,seqVal);
+      this.curSeqIndex++;
+      this.seqLocOld++;
     }
   }
 }
@@ -1115,7 +1141,8 @@ export class Apu{
         //三角波占12.765% 噪声波占7.41% DPCM占42.545%
         //volumeTotal += 0.00851 * this.triangle.triangleSeqDataView.getUint8(t) + 0.00494 * this.noise.noiseSeqDataView.getUint8(t) + 0.00335 * this.dpcm.dpcmSeqDataView.getUint8(t);
         //test
-        volumeTotal+=1*(this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
+        volumeTotal+=2*(this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
+        volumeTotal+=this.triangle.triangleSeqDataView.getUint8(t);
         //volumeTotal+= 0.12765 * this.triangle.triangleSeqDataView.getInt8(t) + 0.741 * this.noise.noiseSeqDataView.getInt8(t) + 0.42545 * this.dpcm.dpcmSeqDataView.getInt8(t);
         //
         //this.seqDataView.setUint8(t,Math.floor(volumeTotal * 256)&0xff);
