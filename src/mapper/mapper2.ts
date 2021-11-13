@@ -1,5 +1,5 @@
 import {Mapper,CartridgeReader} from '../cartridge';
-export class Mapper0 implements Mapper{
+export class Mapper2 implements Mapper{
   //TODO如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 卡带上为什么会没有图案表？
   private chRamPtr:ArrayBuffer;
   private chRamPtrDataView:DataView;
@@ -10,6 +10,10 @@ export class Mapper0 implements Mapper{
   //卡带
   private cartridge:CartridgeReader;
   public nametableMirror:number;
+
+  //
+  public prgSelect16kbLo:number;
+  public prgSelect16kbHi:number
   constructor(cartridge:CartridgeReader,hasVrom:boolean){
     //如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 
     this.reset(cartridge,hasVrom);
@@ -25,6 +29,8 @@ export class Mapper0 implements Mapper{
       this.chRamPtrDataView=null;
     }
     this.cartridge=_cartridge;
+    this.prgSelect16kbLo=0;
+    this.prgSelect16kbHi=this.cartridge.romNum-1;
     //根据卡带数据 设置RPG和VROM数据视图
     this.rpgDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.programOffset,this.cartridge.romNum*16384);
     this.vromDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.vromOffset);
@@ -39,33 +45,28 @@ export class Mapper0 implements Mapper{
   }
   //CPU读取程序数据
   public cpuReadRpg(busAddress:number):number{
-    //因为卡带数据在总线中从0x8000 二进制即10000000 0000000  所以只需把最高位截掉，即可得到相对于卡带的位置 
     //TODO注意，文件头不占据总线中的位置 不确定
-    let address:number;
-    if(this.cartridge.romNum===1){
-      address=busAddress&0x3fff;
+    //CPU读取两个16KB的代码段
+    if (busAddress <= 0xbfff){
+      const programAddr:number = 0x4000 * this.prgSelect16kbLo + (busAddress & 0x3fff);
+      return this.rpgDataView.getUint8(programAddr);
     }else{
-      address=busAddress&0x7fff;
+      const programAddr:number = 0x4000 * this.prgSelect16kbHi + (busAddress & 0x3fff);
+      return this.rpgDataView.getUint8(programAddr);
     }
-    const maxAddress:number=this.rpgDataView.byteLength-1;
-    if(address>maxAddress){
-      console.warn('cpuReadRpg'+'总线地址:'+busAddress+'超过RPG ROM的最大值'+maxAddress);
-      address=maxAddress;
-    }
-    return this.rpgDataView.getUint8(address);
   }
   //CPU写入程序数据
   public cpuWriteRpg(busAddress:number,value:number):void{
-    console.warn(busAddress+':'+value+'MAPPER0(没有MAPPER)不支持cpuWriteRpg');
+    this.prgSelect16kbLo = value & 0x0f;
   }
   //CPU读取的扩展ROM
   public cpuReadAddRom(busAddress:number):number{
-    console.warn(busAddress+'MAPPER0(没有MAPPER)不支持cpuWriteAddRom');
+    console.warn(busAddress+'MAPPER2不支持cpuWriteAddRom');
     return 0;
   }
   //CPU写入扩展ROM
   public cpuWriteAddRom(busAddress:number,value:number):void{
-    console.warn(busAddress+':'+value+'MAPPER0(没有MAPPER)不支持cpuWriteAddRom');
+    console.warn(busAddress+':'+value+'MAPPER2不支持cpuWriteAddRom');
   }
 
   //PPU读取图案表 ppu总线地址
@@ -82,7 +83,7 @@ export class Mapper0 implements Mapper{
     if(this.cartridge.vromNum===0){
       this.chRamPtrDataView.setUint8(busAddress,value);
     }else{
-      console.warn(busAddress+':'+value+'MAPPER0(没有MAPPER)不支持ppuWritePt');
+      console.warn(busAddress+':'+value+'卡带ROM不能写入');
     }
   }
 }

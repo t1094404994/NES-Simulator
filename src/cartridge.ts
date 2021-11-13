@@ -1,4 +1,6 @@
 import { Mapper0 } from './mapper/mapper0';
+import { Mapper1 } from './mapper/mapper1';
+import { Mapper2 } from './mapper/mapper2';
 
 type ReadData=(address:number)=>number;
 type WriteData=(address:number,value:number)=>void;
@@ -35,9 +37,9 @@ export class CartridgeReader{
   //程序数据在卡带数据的起始位置
   public programOffset:number;
   //卡带8kb图集数量
-  public vramNum:number;
+  public vromNum:number;
   //图形数据在卡带中的起始位置
-  public vramOffset:number;
+  public vromOffset:number;
 
   //卡带是否有多的ROM
   public hasAddedRom:boolean;
@@ -59,16 +61,27 @@ export class CartridgeReader{
     }
     //读取文件头里保存的各种信息
     this.romNum=this.dataView.getUint8(4);
-    this.vramNum=this.dataView.getUint8(5);
-    this.vramOffset=this.programOffset+this.romNum*16384;
+    this.vromNum=this.dataView.getUint8(5);
+    this.vromOffset=this.programOffset+this.romNum*16384;
     //这个卡带规定的nametable的镜像方式
-    //const nameTableMirror:number= this.dataView.getUint8(6) & 0xb;
+    const nameTableMirror:number= this.dataView.getUint8(6) & 0xb;
     //MAPPER类型
     this.mapperId= ((this.dataView.getUint8(6) >> 4) & 0xf) | (this.dataView.getUint8(7) & 0xf0);
+    //有无增加ROM
+    this.hasAddedRom=(this.dataView.getUint8(6) & 0x2)!==0;
     if(this.mapperId===0){
-      this.mapper=new Mapper0(this,this.vramNum!==0);
-      this.mapper.nametableMirror=this.dataView.getUint8(6) & 0xb;
-    }else{
+      this.mapper=new Mapper0(this,this.vromNum!==0);
+      this.mapper.nametableMirror=nameTableMirror;
+    }
+    else if(this.mapperId===1){
+      this.mapper=new Mapper1(this,this.vromNum!==0);
+      this.mapper.nametableMirror=nameTableMirror;
+    }
+    else if(this.mapperId===2){
+      this.mapper=new Mapper2(this,this.vromNum!==0);
+      this.mapper.nametableMirror=nameTableMirror;
+    }
+    else{
       throw new Error('目前不支持'+this.mapperId);
       
     }

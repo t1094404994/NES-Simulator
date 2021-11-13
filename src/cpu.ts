@@ -242,9 +242,12 @@ export class Cpu{
       this.regSf.setU(true);
       this.testCycles+=this.cyclesWait;
       //27039270  27039470
-      // if(this.testCycles>=27039070){
+      // if(this.testCycles>=59450){
       //   console.log('opcode:'+this.opcode+'/'+instr.name+'    address:'+this.address+'regPC:'+this.regPc+'周期:'+this.testCycles);
       //   console.log('状态寄存器:'+this.regSf.getData()+'8194: '+this.cpuBus.getValue(8194));
+      // }
+      // if(this.testCycles>=59500){
+      //   console.log('fdsdfs');
       // }
     }
     this.cyclesWait--;

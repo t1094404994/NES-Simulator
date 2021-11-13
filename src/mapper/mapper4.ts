@@ -1,5 +1,5 @@
 import {Mapper,CartridgeReader} from '../cartridge';
-export class Mapper0 implements Mapper{
+export class Mapper4 implements Mapper{
   //TODO如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 卡带上为什么会没有图案表？
   private chRamPtr:ArrayBuffer;
   private chRamPtrDataView:DataView;
@@ -70,7 +70,7 @@ export class Mapper0 implements Mapper{
 
   //PPU读取图案表 ppu总线地址
   public ppuReadPt(busAddress:number):number{
-    if(this.cartridge.vromNum===0){
+    if(this.cartridge.romNum===0){
       return this.chRamPtrDataView.getUint8(busAddress);
     }else{
       return this.vromDataView.getUint8(busAddress);
@@ -79,7 +79,7 @@ export class Mapper0 implements Mapper{
 
   //PPU写入图案表
   public ppuWritePt(busAddress:number,value:number):void{
-    if(this.cartridge.vromNum===0){
+    if(this.cartridge.romNum===0){
       this.chRamPtrDataView.setUint8(busAddress,value);
     }else{
       console.warn(busAddress+':'+value+'MAPPER0(没有MAPPER)不支持ppuWritePt');

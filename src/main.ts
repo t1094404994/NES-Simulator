@@ -100,18 +100,20 @@ export class Main{
   //设置卡带数据
   public setCartidegData(data:ArrayBuffer):void{
     this.removeControllerEvent();
-    this.cartridge.resetData(data);
-    this.cpubus.setCartridgeReader(this.cartridge);
-    this.ppuBus.setCartridgeReader(this.cartridge);
-    this.cpu.reset();
-    this.ppu.reset();
-    this.apu.reset();
-    this.ppuBus.reset();
-    this.controllerL.reset(true);
-    this.controllerR.reset(false);
-    this.addControllerEvent();
-    //测试
-    this.start();
+    const sync:boolean=this.cartridge.resetData(data);
+    if(sync){
+      this.cpubus.setCartridgeReader(this.cartridge);
+      this.ppuBus.setCartridgeReader(this.cartridge);
+      this.cpu.reset();
+      this.ppu.reset();
+      this.apu.reset();
+      this.ppuBus.reset();
+      this.controllerL.reset(true);
+      this.controllerR.reset(false);
+      this.addControllerEvent();
+      //测试
+      this.start();
+    }
     //this.testAudioPlay();
   }
 
