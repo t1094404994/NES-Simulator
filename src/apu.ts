@@ -1066,7 +1066,7 @@ export class Apu{
   }
 
   public onFrameIrq():void{
-    //TODO APU执行可中断屏蔽还有点问题
+    //TODO APU执行可中断屏蔽还有点问题。
     // if (this.frameCounter.getFrameIrq()){
     //   this.frameInterrupt = true;
     //   this.cpuBus.getCpu().irq();
