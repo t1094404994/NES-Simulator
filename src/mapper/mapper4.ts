@@ -39,33 +39,19 @@ export class Mapper4 implements Mapper{
   }
   //CPU读取程序数据
   public cpuReadRpg(busAddress:number):number{
-    //因为卡带数据在总线中从0x8000 二进制即10000000 0000000  所以只需把最高位截掉，即可得到相对于卡带的位置 
-    //TODO注意，文件头不占据总线中的位置 不确定
-    let address:number;
-    if(this.cartridge.romNum===1){
-      address=busAddress&0x3fff;
-    }else{
-      address=busAddress&0x7fff;
-    }
-    const maxAddress:number=this.rpgDataView.byteLength-1;
-    if(address>maxAddress){
-      console.warn('cpuReadRpg'+'总线地址:'+busAddress+'超过RPG ROM的最大值'+maxAddress);
-      address=maxAddress;
-    }
-    return this.rpgDataView.getUint8(address);
+    return 0;
   }
   //CPU写入程序数据
   public cpuWriteRpg(busAddress:number,value:number):void{
-    console.warn(busAddress+':'+value+'MAPPER0(没有MAPPER)不支持cpuWriteRpg');
+    //
   }
   //CPU读取的扩展ROM
   public cpuReadAddRom(busAddress:number):number{
-    console.warn(busAddress+'MAPPER0(没有MAPPER)不支持cpuWriteAddRom');
     return 0;
   }
   //CPU写入扩展ROM
   public cpuWriteAddRom(busAddress:number,value:number):void{
-    console.warn(busAddress+':'+value+'MAPPER0(没有MAPPER)不支持cpuWriteAddRom');
+    //
   }
 
   //PPU读取图案表 ppu总线地址
@@ -82,7 +68,7 @@ export class Mapper4 implements Mapper{
     if(this.cartridge.romNum===0){
       this.chRamPtrDataView.setUint8(busAddress,value);
     }else{
-      console.warn(busAddress+':'+value+'MAPPER0(没有MAPPER)不支持ppuWritePt');
+      console.warn(busAddress+':'+value+'卡带ROM不能写入');
     }
   }
 }

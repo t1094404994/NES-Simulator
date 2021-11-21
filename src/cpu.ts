@@ -149,7 +149,7 @@ export class Cpu{
   //栈指针偏移 RAM中第256位起的256字节才是栈空间
   private regSpOffSet:number;
   //状态寄存器, 8bit
-  private regSf:StatusFlag;
+  public regSf:StatusFlag;
   //程序计数器,将要执行的指令(总线)地址 每次执行后自增 16bit
   private regPc:number;
   
@@ -164,6 +164,13 @@ export class Cpu{
   private opcodeMapTable:Array<Instruction>;
   //等待循环
   private cyclesWait:number;
+  //IRQ计数器 右1变为0则执行IRQ中断
+  public irqCounter:number;
+  //
+  public irqFlag:number;
+  //IRQ进程中
+  public irqInProcess:number;
+  //测试
   private testCycles=0;
   //CPU循环计数
   private clockCount:number;
@@ -177,6 +184,9 @@ export class Cpu{
     this.clockCount=0;
     this.address=0;
     this.addressRel=0;
+    this.irqCounter=0;
+    this.irqFlag=0;
+    this.irqInProcess=0;
     this.initTable();
   }
 
@@ -194,6 +204,10 @@ export class Cpu{
     this.regSf.setI(true);
     this.regSf.setU(true);
     //console.log('重置/初始化CPU');
+  }
+
+  public setRegSfIrq(value:boolean):void{
+    this.regSf.setI(value);
   }
 
   public setCpuBus(_cpuBus:CpuBus):void{
@@ -224,6 +238,16 @@ export class Cpu{
   //CPU主循环
   public step():void{
     if(this.cyclesWait===0){
+      //判断IRQ
+      // IRQ 处理
+      if(this.irqCounter) {
+        --this.irqCounter;
+        if(this.irqCounter === 0) {
+          this.irqInProcess =1;
+          this.irq();
+          return;
+        }
+      }
       //根据程序寄存器寄存的地址，读取汇编操作码
       this.opcode=this.cpuBus.getValue(this.regPc++);
       this.regSf.setU(true);
@@ -242,9 +266,9 @@ export class Cpu{
       this.regSf.setU(true);
       this.testCycles+=this.cyclesWait;
       //27039270  27039470
-      // if(this.testCycles>=59450){
+      // if(){
       //   console.log('opcode:'+this.opcode+'/'+instr.name+'    address:'+this.address+'regPC:'+this.regPc+'周期:'+this.testCycles);
-      //   console.log('状态寄存器:'+this.regSf.getData()+'8194: '+this.cpuBus.getValue(8194));
+      //   //console.log('状态寄存器:'+this.regSf.getData()+'8194: '+this.cpuBus.getValue(8194));
       // }
       // if(this.testCycles>=59500){
       //   console.log('fdsdfs');
@@ -257,19 +281,17 @@ export class Cpu{
   //CPU执行可屏蔽中断
   public irq():void{
     //console.log('CPU执行可屏蔽中断');
-    if (this.regSf.getI() === 0){ //判断中断是否被屏蔽了。0为允许IRQ中断，1为屏蔽
-      //把Program Counter和Status寄存器放到栈里面
-      this.stackPush(this.regPc >> 8);
-      this.stackPush(this.regPc & 0xFF);
-      this.stackPush(this.regSf.getData());
-      this.regSf.setI(true);
-      //TODO
-      const lo:number=this.cpuBus.getValue(0xFFFE);
-      const hi:number=this.cpuBus.getValue(0xFFFF)<<8;
-      this.regPc =hi+lo;
-      //IRQ中断需要7个时钟周期
-      this.cyclesWait = 7;
-    }
+    //把Program Counter和Status寄存器放到栈里面
+    this.stackPush(this.regPc >> 8);
+    this.stackPush(this.regPc & 0xFF);
+    this.stackPush(this.regSf.getData()|0x20);
+    this.regSf.setI(true);
+    //TODO
+    const lo:number=this.cpuBus.getValue(0xFFFE);
+    const hi:number=this.cpuBus.getValue(0xFFFF)<<8;
+    this.regPc =hi+lo;
+    //IRQ中断需要7个时钟周期
+    this.cyclesWait += 7;
   }
 
   //CPU执行不可屏蔽中断
@@ -277,15 +299,15 @@ export class Cpu{
     //console.log('CPU执行不可屏蔽中断');
     this.stackPush(this.regPc >> 8);
     this.stackPush(this.regPc & 0xFF);
-    this.regSf.setB(false);
-    this.regSf.setU(true);
+    // this.regSf.setB(false);
+    // this.regSf.setU(true);
+    this.stackPush(this.regSf.getData()|0x20);
     this.regSf.setI(true);
-    this.stackPush(this.regSf.getData());
     const lo:number=this.cpuBus.getValue(0xFFFA);
     const hi:number=this.cpuBus.getValue(0xFFFB)<<8;
     this.regPc =hi+lo;
     //有些是8
-    this.cyclesWait = 7;
+    this.cyclesWait += 7;
   }
 
   //执行DMA时，CPU会被阻塞513或514个周期
@@ -649,6 +671,7 @@ export class Cpu{
   //清除中断禁止标志I,
   private CLI():number{
     this.regSf.setI(false);
+    this.irqCounter=this.irqFlag<<1;
     return 0;
   }
 
@@ -879,6 +902,10 @@ export class Cpu{
   private PLP():number{
     this.regSf.setData(this.stackPop());
     this.regSf.setU(true);
+    this.regSf.setB(false);
+    if(!this.regSf.getI()){
+      this.irqCounter=this.irqFlag<<1;
+    }
     return 0;
   }
 
@@ -928,10 +955,13 @@ export class Cpu{
   private RTI():number{
     this.regSf.setData(this.stackPop());
     this.regSf.setB(false);
-    this.regSf.setU(false);
+    this.regSf.setU(true);
     const lo:number=this.stackPop();
     const hi:number=this.stackPop()<<8;
     this.regPc=hi+lo;
+    //清除IRQ计数
+    this.irqCounter=this.irqInProcess&this.irqFlag&((~this.regSf.getData())>>2);
+    this.irqInProcess=0;
     return 0;
   }
 

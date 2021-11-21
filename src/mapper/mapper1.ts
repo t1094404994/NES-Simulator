@@ -115,9 +115,6 @@ export class Mapper1 implements Mapper{
       //CPU读取一个32KB的代码段
       programAddr = 0x8000 * this.prgSelect32kb + (busAddress & 0x7fff);
     }
-    if(busAddress===65442){
-      console.log(',kdfjs;kj');
-    }
     return this.rpgDataView.getUint8(programAddr);
   }
   //CPU写入程序数据

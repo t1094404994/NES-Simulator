@@ -33,6 +33,7 @@ const DPCMPeriodMap:Array<number>= [428, 380, 340, 320, 286, 254, 226, 214, 190,
 const SAMPLE_PER_SEC=44100;
 //CPU频率
 const CPU_CYCLE_PER_SEC=1789773;
+//const CPU_CYCLE_PER_SEC=1662607 ;
 //一次需要的采样数
 const SAMPLE_PER_CLOCK=(SAMPLE_PER_SEC / 240 + 1);
 
@@ -575,6 +576,9 @@ class TriangleWave{
     case 0:
       this.triangleReg.setData(0,value);
       break;
+    case 1:
+      console.log('向0x4009,不会用到的index写入数据');
+      break;
     case 2:
       this.triangleReg.setData(2,value);
       this.currPeriod = this.triangleReg.getPeriod();
@@ -913,7 +917,7 @@ class DPCM{
           //如果播放完成了，而且设置了IRQ中断，则给出一个IRQ中断
           if (this.bitsRemain === 0 && this.bytesRemain === 0){
             if (this.dpcmReg.getIRQ())
-              this.cpuBus.getCpu().irq();
+              this.cpuBus.tryIRQ();
             if (this.dpcmReg.getLoop()){
               this.currAddress = this.dpcmReg.getSampleAddress();
               this.bytesRemain = this.dpcmReg.getSampleLen();
@@ -1026,9 +1030,10 @@ export class Apu{
     }else if (index === 0x17){
       //写入frame counter
       this.frameCounter.setData(value);
-      if (this.frameCounter.getMode()|| (!this.frameCounter.getFrameIrq()))
+      if (value&0x40){
         this.frameInterrupt = false;
-      if (this.frameCounter.getMode()){
+      }
+      if (value&0x80){
         //启用五步模式，会立即产生一个时钟信号
         this.onEnvelopeLinearClock();
         this.onLengthSweepClock();
@@ -1046,6 +1051,7 @@ export class Apu{
     if (this.dpcm.bytesRemain) res |= (1 << 4);
     //读取$4015数据时，会立即清掉frameInterrupt
     this.frameInterrupt = false;
+    this.cpuBus.IrqAcknowledge();
     return res;
   }
 
@@ -1067,10 +1073,10 @@ export class Apu{
 
   public onFrameIrq():void{
     //TODO APU执行可中断屏蔽还有点问题。
-    // if (this.frameCounter.getFrameIrq()){
-    //   this.frameInterrupt = true;
-    //   this.cpuBus.getCpu().irq();
-    // }
+    if (!this.frameCounter.getFrameIrq()){
+      this.frameInterrupt = true;
+      this.cpuBus.tryIRQ();
+    }
   }
 
   //单步
@@ -1079,18 +1085,21 @@ export class Apu{
     if (this.frameCounter.getMode()){
       switch (this.clockCnt % 5){
       case 0:
-        this.onEnvelopeLinearClock();
+        //this.onEnvelopeLinearClock();
         break;
       case 1:
-        this.onLengthSweepClock();
         this.onEnvelopeLinearClock();
+        //this.onEnvelopeLinearClock();
         break;
       case 2:
+        this.onLengthSweepClock();
+        break;
+      case 3:
         this.onEnvelopeLinearClock();
         break;
       case 4:
         this.onLengthSweepClock();
-        this.onEnvelopeLinearClock();
+        //this.onLengthSweepClock();
         break;
       default:
         break;
@@ -1101,8 +1110,8 @@ export class Apu{
         this.onEnvelopeLinearClock();
         break;
       case 1:
-        this.onLengthSweepClock();
         this.onEnvelopeLinearClock();
+        this.onLengthSweepClock();
         break;
       case 2:
         this.onEnvelopeLinearClock();

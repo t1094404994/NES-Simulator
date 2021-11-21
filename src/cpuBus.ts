@@ -76,20 +76,20 @@ export class CpuBus{
         console.warn('CPU不能取得PPU  0x2000');
         return 0;
       case 0x2001:
-        console.warn('CPU不能取得PPU  0x2000');
+        console.warn('CPU不能取得PPU  0x2001');
         return 0;
       case 0x2002:
         return this.ppu.getStatus();
       case 0x2003:
-        console.warn('CPU不能取得PPU  0x2000');
+        console.warn('CPU不能取得PPU  0x2003');
         return 0;
       case 0x2004:
         return this.ppu.getOamdata();
       case 0x2005:
-        console.warn('CPU不能取得PPU  0x2000');
+        console.warn('CPU不能取得PPU  0x2004');
         return 0;
       case 0x2006:
-        console.warn('CPU不能取得PPU  0x2000');
+        console.warn('CPU不能取得PPU  0x2006');
         return 0;
       case 0x2007:
         return this.ppu.readData();
@@ -226,5 +226,20 @@ export class CpuBus{
       }
     }
     return dataView;
+  }
+
+  //尝试IRQ中断
+  public tryIRQ():void{
+    if(this.cpu.regSf.getI()){
+      this.cpu.irqFlag=1;
+    }else{
+      this.cpu.irqCounter=1;
+    }
+  }
+
+  //清除IRQ
+  public IrqAcknowledge():void{
+    this.cpu.irqFlag=0;
+    this.cpu.irqCounter=0;
   }
 }
