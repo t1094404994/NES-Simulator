@@ -738,8 +738,6 @@ class DPCM{
   public currByte:number;
   //还有多少字节没有完成 
   public bytesRemain:number; 
-  //这个正在处理的字节，还有多少位没处理完
-  public bitsRemain:number;
   //当前缓存的音量 
   public outputLevel:number; 
   //播放DPCM需要缓存的内容
@@ -760,7 +758,6 @@ class DPCM{
     this.currAddress=0;
     this.currByte=0;
     this.bytesRemain=0;
-    this.bitsRemain=0;
     this.outputLevel=0;
     this.curSeqIndex=0;
     this.clearDpcmSeq();
@@ -782,12 +779,10 @@ class DPCM{
     switch(index){
     case 0:
       this.dpcmReg.setData(0,value);
+      console.log('写入数据,是否循环:'+this.dpcmReg.getLoop());
       break;
     case 1:
       this.dpcmReg.setData(1,value);
-      if(value>0){
-        console.log('写入一个大于零的数');
-      }
       this.outputLevel=this.dpcmReg.getVolume();
       break;
     case 2:
@@ -798,6 +793,7 @@ class DPCM{
       //每次写入，重写地址和字节数
       this.currAddress = this.dpcmReg.getSampleAddress();
       this.bytesRemain = this.dpcmReg.getSampleLen();
+      console.log('写入DPCM采样地址和长度',this.currAddress,this.bytesRemain);
       break;
     default:
       console.warn('向DPCM寄存器写入不存在的Index');
@@ -806,6 +802,8 @@ class DPCM{
   }
 
   public play(clockCnt:number,enable:boolean):void{
+    //如果已经读取完成。
+    if(!this.bytesRemain) return;
     //FC中的PCM原始周期
     const fcPeriod=this.dpcmReg.getPeriod();
     //是否循环
@@ -814,44 +812,43 @@ class DPCM{
     const irq=this.dpcmReg.getIRQ();
     //根据现在设置的采样率。算出新周期 A/T1=B/T2
     const period=SAMPLE_PER_SEC*fcPeriod/CPU_CYCLE_PER_SEC;
-    //需要的周期是原始数据的多少倍，用于判断一个需要多少循环
-    const oneLoop:number=this.bytesRemain?period/this.bytesRemain:1;
+    // //需要的周期是原始数据的多少倍，用于判断一个需要多少循环
+    // const oneLoop:number=period/this.bytesRemain;
+    const oneLoop:number=period;
     for(let sample_loc=0;sample_loc<SAMPLE_PER_CLOCK;){
+      //禁用或者已经读取完毕
       if (!enable){
-        if(this.curSeqIndex===this.dpcmSeqDataView.byteLength){
-          console.log('aaa');
-        }
         this.dpcmSeqDataView.setUint8(this.curSeqIndex,0);
         this.curSeqIndex++;
         sample_loc++;
         continue;
       }
       //当前样本字节已读完，加载下一个样本字节
-      if(this.bytesRemain&&!this.bitsRemain){
+      if(this.bytesRemain){
         this.currByte=this.cpuBus.getValue(this.currAddress);
         if(this.currAddress===0xFFFF){
           this.currAddress=0x8000;
         }else{
-          this.currAddress--;
+          this.currAddress++;
         }
-        this.bytesRemain--;
-        this.bitsRemain=8;
-      }
-      //读取当前样本字节的音频
-      if(this.bitsRemain){
-        //把当前样本字节的音频播放完成
+        //获取当前样本字节的音频值
         while(this.currByte){
           if(this.currByte&1){
             if(this.outputLevel<=125) this.outputLevel+=2;
           }else{
             if(this.outputLevel>=2) this.outputLevel-=2;
           }
-          this.bitsRemain--;
           this.currByte=this.currByte>>1;
         }
+        this.bytesRemain--;
+      }
+      //扩大
+      for(let i=0;i<oneLoop&&sample_loc<SAMPLE_PER_CLOCK;i++,sample_loc++){
+        this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel&0xff);
+        this.curSeqIndex++;
       }
       //如果已经播放完成一遍
-      if (this.bitsRemain === 0 && this.bytesRemain === 0){
+      if (this.bytesRemain === 0){
         //是否触发IRQ
         if (irq)
           this.cpuBus.tryIRQ();
@@ -861,68 +858,63 @@ class DPCM{
           this.bytesRemain = this.dpcmReg.getSampleLen();
         }
       }
-      //扩大
-      for(let i=0;i<oneLoop&&sample_loc<SAMPLE_PER_CLOCK;i++,sample_loc++){
-        this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel*2&0xff);
-        this.curSeqIndex++;
-      }
     }
   }
 
   //播放
-  public playOld(clockCnt:number,enable:boolean):void{
-    //
-    let cpuLocOld:number=Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
-    for (let sample_loc:number=Math.floor(clockCnt * SAMPLE_PER_SEC / 240 + 1); sample_loc <= (clockCnt + 1) * SAMPLE_PER_SEC / 240; sample_loc++){
-      //先计算这个采样点是否要静音
-      if (!enable){
-        this.dpcmSeqDataView.setUint8(this.curSeqIndex,0);
-        this.curSeqIndex++;
-        continue;
-      }
-      //计算这个采样周期内，要做几次DPCM运算
-      const cpuLoc:number= Math.floor(sample_loc * CPU_CYCLE_PER_SEC / SAMPLE_PER_SEC);
-      const dpcmCount:number = Math.floor((cpuLoc / this.dpcmReg.getPeriod()) - (cpuLocOld / this.dpcmReg.getPeriod()));
-      cpuLocOld = cpuLoc;
-      //DPCM计算
-      for (let t= 0; t < dpcmCount; t++){
-        if (this.bytesRemain && (!this.bitsRemain)){
-          //当前样本字节已经读完了，load下一个样本字节
-          this.currByte = this.cpuBus.getValue(this.currAddress);
-          if (this.currAddress === 0xFFFF)
-            this.currAddress = 0x8000;
-          else
-            this.currAddress++;
-          this.bytesRemain--;
-          this.bitsRemain = 8;
-        }
-        if (this.bitsRemain){
-          //把当前样本字节的音频播放完成 0-127
-          if (this.currByte & 1){
-            if (this.outputLevel <= 125)
-              this.outputLevel += 2;
-          }else{
-            if (this.outputLevel >= 2)
-              this.outputLevel -= 2;
-          }
-          this.bitsRemain--;
-          this.currByte >>= 1;
-          //如果播放完成了，而且设置了IRQ中断，则给出一个IRQ中断
-          if (this.bitsRemain === 0 && this.bytesRemain === 0){
-            if (this.dpcmReg.getIRQ())
-              this.cpuBus.tryIRQ();
-            if (this.dpcmReg.getLoop()){
-              this.currAddress = this.dpcmReg.getSampleAddress();
-              this.bytesRemain = this.dpcmReg.getSampleLen();
-            }
-          }
-        }
-      }
-      //收尾操作
-      this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel&0xff);
-      this.curSeqIndex++;
-    }
-  }
+  // public playOld(clockCnt:number,enable:boolean):void{
+  //   //
+  //   let cpuLocOld:number=Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
+  //   for (let sample_loc:number=Math.floor(clockCnt * SAMPLE_PER_SEC / 240 + 1); sample_loc <= (clockCnt + 1) * SAMPLE_PER_SEC / 240; sample_loc++){
+  //     //先计算这个采样点是否要静音
+  //     if (!enable){
+  //       this.dpcmSeqDataView.setUint8(this.curSeqIndex,0);
+  //       this.curSeqIndex++;
+  //       continue;
+  //     }
+  //     //计算这个采样周期内，要做几次DPCM运算
+  //     const cpuLoc:number= Math.floor(sample_loc * CPU_CYCLE_PER_SEC / SAMPLE_PER_SEC);
+  //     const dpcmCount:number = Math.floor((cpuLoc / this.dpcmReg.getPeriod()) - (cpuLocOld / this.dpcmReg.getPeriod()));
+  //     cpuLocOld = cpuLoc;
+  //     //DPCM计算
+  //     for (let t= 0; t < dpcmCount; t++){
+  //       if (this.bytesRemain && (!this.bitsRemain)){
+  //         //当前样本字节已经读完了，load下一个样本字节
+  //         this.currByte = this.cpuBus.getValue(this.currAddress);
+  //         if (this.currAddress === 0xFFFF)
+  //           this.currAddress = 0x8000;
+  //         else
+  //           this.currAddress++;
+  //         this.bytesRemain--;
+  //         this.bitsRemain = 8;
+  //       }
+  //       if (this.bitsRemain){
+  //         //把当前样本字节的音频播放完成 0-127
+  //         if (this.currByte & 1){
+  //           if (this.outputLevel <= 125)
+  //             this.outputLevel += 2;
+  //         }else{
+  //           if (this.outputLevel >= 2)
+  //             this.outputLevel -= 2;
+  //         }
+  //         this.bitsRemain--;
+  //         this.currByte >>= 1;
+  //         //如果播放完成了，而且设置了IRQ中断，则给出一个IRQ中断
+  //         if (this.bitsRemain === 0 && this.bytesRemain === 0){
+  //           if (this.dpcmReg.getIRQ())
+  //             this.cpuBus.tryIRQ();
+  //           if (this.dpcmReg.getLoop()){
+  //             this.currAddress = this.dpcmReg.getSampleAddress();
+  //             this.bytesRemain = this.dpcmReg.getSampleLen();
+  //           }
+  //         }
+  //       }
+  //     }
+  //     //收尾操作
+  //     this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel&0xff);
+  //     this.curSeqIndex++;
+  //   }
+  // }
 }
 
 //APU
@@ -1133,7 +1125,6 @@ export class Apu{
     this.square1.play(this.clockCnt, this.statusReg.getPulse1());
     this.triangle.play(this.clockCnt, this.statusReg.getTriangle());
     this.noise.play(this.clockCnt, this.statusReg.getNoise());
-    //TODO
     this.dpcm.play(this.clockCnt, this.statusReg.getNoise());
     this.play=false;
     if (this.clockCnt % 4 === 3){
@@ -1150,7 +1141,7 @@ export class Apu{
         // volumeTotal+=2*(this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
         // volumeTotal+=this.triangle.triangleSeqDataView.getUint8(t);
         // volumeTotal+=this.noise.noiseSeqDataView.getUint8(t);
-        volumeTotal+=this.dpcm.dpcmSeqDataView.getUint8(t);
+        volumeTotal+=0.3*this.dpcm.dpcmSeqDataView.getUint8(t);
         this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
       }
       //将各个波形中的一些缓存数据清零
