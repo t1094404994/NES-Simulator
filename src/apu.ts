@@ -568,8 +568,8 @@ class TriangleWave{
   } 
 
   public play(clockCnt:number,enable:boolean):void{
-    //采样周期
-    const cycle:number=(32*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC);
+    //采样周期 三角波是特例，以CPU周期为单位
+    const cycle:number=(16*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC);
     const sinle:number=cycle/32;
     for(let sampleLoc=0;sampleLoc<SAMPLE_PER_CLOCK;sampleLoc++){
       //计算这个采样点是否要静音. 长度计数器和线性计数器中，只要有一个为零，就静音
@@ -621,7 +621,7 @@ class Noise{
     this.envelopeDivider=0;
     this.envelopeVal=0;
     this.lenCounter=0;
-    this.regLfsr=0;
+    this.regLfsr=1;
     this.curSeqIndex=0;
     this.clearNoiseSeq();
   }
@@ -659,18 +659,22 @@ class Noise{
     if (this.envelopeRestart){
       //包络重新开始
       this.envelopeRestart = false;
-      this.envelopeDivider = this.noiseReg.getNoisePeriod();
+      this.envelopeDivider = this.noiseReg.getVolume();
       this.envelopeVal = 15;
     }else{
       if (this.envelopeDivider === 0){
-        this.envelopeDivider = this.noiseReg.getNoisePeriod();
+        this.envelopeDivider = this.noiseReg.getVolume();
         if (this.envelopeVal === 0){
-          if (this.noiseReg.getHalt()){
+          if(this.noiseReg.getHalt()){
             this.envelopeVal = 15;
           }
-        }else{
+        }
+        else{
           this.envelopeVal--;
         }
+        // else if(this.envelopeValue>0){
+        //   this.envelopeValue--;
+        // }
       }else{
         this.envelopeDivider--;
       }
@@ -682,9 +686,52 @@ class Noise{
     if (!this.noiseReg.getHalt()&&this.lenCounter >= 1){
       this.lenCounter -= 1;
     }
-  } 
+  }
   //播放
   public play(clockCnt:number,enable:boolean):void{
+    //FC中的PCM原始周期
+    const fcPeriod=this.noiseReg.getNoisePeriod();
+    //根据现在设置的采样率。算出新周期 A/T1=B/T2
+    const period=SAMPLE_PER_SEC*fcPeriod/CPU_CYCLE_PER_SEC;
+    for(let sample_loc=0;sample_loc<SAMPLE_PER_CLOCK;){
+      //禁用或者已经输出完毕
+      if (!enable||(this.lenCounter===0)){
+        this.noiseSeqDataView.setUint8(this.curSeqIndex,0);
+        this.curSeqIndex++;
+        sample_loc++;
+        continue;
+      }
+      //进行LFSR计算
+      const d0:number = this.regLfsr & 1;
+      let output:number;
+      if (this.noiseReg.getNoiseMode()){
+        //短模式
+        const d6:number = (this.regLfsr>>6 & 1);
+        output = (d0 ^ d6)?1:0;
+        this.regLfsr = (this.regLfsr >> 1) | (output << 14);
+      }else{
+        //长模式
+        const d1:number = (this.regLfsr>>1 & 1);
+        output = (d0 ^ d1)?1:0;
+        this.regLfsr = (this.regLfsr >> 1) | (output << 14);
+      }
+      //计算这个采样点的音量
+      let volume:number;
+      if (this.noiseReg.getEnvelope()){ //使用固定音量
+        volume = this.noiseReg.getVolume();
+      }else{ //使用包络音量
+        volume = this.envelopeVal;
+      }
+      output=volume**output;
+      //扩大
+      for(let i=0;i<period&&sample_loc<SAMPLE_PER_CLOCK;i++,sample_loc++){
+        this.noiseSeqDataView.setUint8(this.curSeqIndex,(output&0xff));
+        this.curSeqIndex++;
+      }
+    }
+  }
+  //播放
+  public playOld(clockCnt:number,enable:boolean):void{
     //
     let cpuLocOld:number = Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
     for (let sampleLoc:number =Math.floor(clockCnt * SAMPLE_PER_SEC / 240 + 1); sampleLoc <= (clockCnt + 1) * SAMPLE_PER_SEC / 240; sampleLoc++){
@@ -793,7 +840,6 @@ class DPCM{
       //每次写入，重写地址和字节数
       this.currAddress = this.dpcmReg.getSampleAddress();
       this.bytesRemain = this.dpcmReg.getSampleLen();
-      console.log('写入DPCM采样地址和长度',this.currAddress,this.bytesRemain);
       break;
     default:
       console.warn('向DPCM寄存器写入不存在的Index');
@@ -858,61 +904,6 @@ class DPCM{
       }
     }
   }
-
-  //播放
-  // public playOld(clockCnt:number,enable:boolean):void{
-  //   //
-  //   let cpuLocOld:number=Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
-  //   for (let sample_loc:number=Math.floor(clockCnt * SAMPLE_PER_SEC / 240 + 1); sample_loc <= (clockCnt + 1) * SAMPLE_PER_SEC / 240; sample_loc++){
-  //     //先计算这个采样点是否要静音
-  //     if (!enable){
-  //       this.dpcmSeqDataView.setUint8(this.curSeqIndex,0);
-  //       this.curSeqIndex++;
-  //       continue;
-  //     }
-  //     //计算这个采样周期内，要做几次DPCM运算
-  //     const cpuLoc:number= Math.floor(sample_loc * CPU_CYCLE_PER_SEC / SAMPLE_PER_SEC);
-  //     const dpcmCount:number = Math.floor((cpuLoc / this.dpcmReg.getPeriod()) - (cpuLocOld / this.dpcmReg.getPeriod()));
-  //     cpuLocOld = cpuLoc;
-  //     //DPCM计算
-  //     for (let t= 0; t < dpcmCount; t++){
-  //       if (this.bytesRemain && (!this.bitsRemain)){
-  //         //当前样本字节已经读完了，load下一个样本字节
-  //         this.currByte = this.cpuBus.getValue(this.currAddress);
-  //         if (this.currAddress === 0xFFFF)
-  //           this.currAddress = 0x8000;
-  //         else
-  //           this.currAddress++;
-  //         this.bytesRemain--;
-  //         this.bitsRemain = 8;
-  //       }
-  //       if (this.bitsRemain){
-  //         //把当前样本字节的音频播放完成 0-127
-  //         if (this.currByte & 1){
-  //           if (this.outputLevel <= 125)
-  //             this.outputLevel += 2;
-  //         }else{
-  //           if (this.outputLevel >= 2)
-  //             this.outputLevel -= 2;
-  //         }
-  //         this.bitsRemain--;
-  //         this.currByte >>= 1;
-  //         //如果播放完成了，而且设置了IRQ中断，则给出一个IRQ中断
-  //         if (this.bitsRemain === 0 && this.bytesRemain === 0){
-  //           if (this.dpcmReg.getIRQ())
-  //             this.cpuBus.tryIRQ();
-  //           if (this.dpcmReg.getLoop()){
-  //             this.currAddress = this.dpcmReg.getSampleAddress();
-  //             this.bytesRemain = this.dpcmReg.getSampleLen();
-  //           }
-  //         }
-  //       }
-  //     }
-  //     //收尾操作
-  //     this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel&0xff);
-  //     this.curSeqIndex++;
-  //   }
-  // }
 }
 
 //APU
@@ -1136,10 +1127,10 @@ export class Apu{
         //三角波占12.765% 噪声波占7.41% DPCM占42.545%
         //volumeTotal += 0.00851 * this.triangle.triangleSeqDataView.getUint8(t) + 0.00494 * this.noise.noiseSeqDataView.getUint8(t) + 0.00335 * this.dpcm.dpcmSeqDataView.getUint8(t);
         //test
-        volumeTotal+=2*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
-        volumeTotal+=this.triangle.triangleSeqDataView.getInt8(t);
-        volumeTotal+=this.noise.noiseSeqDataView.getInt8(t);
-        volumeTotal+=0.5*this.dpcm.dpcmSeqDataView.getInt8(t);
+        volumeTotal+=1*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
+        volumeTotal+=1*this.triangle.triangleSeqDataView.getUint8(t);
+        volumeTotal+=1*this.noise.noiseSeqDataView.getInt8(t);
+        volumeTotal+=0.2*this.dpcm.dpcmSeqDataView.getInt8(t);
         this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
       }
       //将各个波形中的一些缓存数据清零
