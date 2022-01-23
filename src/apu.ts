@@ -222,12 +222,12 @@ class DPCMRegister{
 
   //获取样本的地址
   public getSampleAddress():number{
-    return 0xc000|this.data[2]<<6;
+    return this.data[2]*0x40+0xc000;
   }
 
   //获取样本的长度
   public getSampleLen():number{
-    return 1|this.data[3]<<4;
+    return this.data[3]*0x10+1;
   }
 }
 
@@ -812,9 +812,7 @@ class DPCM{
     const irq=this.dpcmReg.getIRQ();
     //根据现在设置的采样率。算出新周期 A/T1=B/T2
     const period=SAMPLE_PER_SEC*fcPeriod/CPU_CYCLE_PER_SEC;
-    // //需要的周期是原始数据的多少倍，用于判断一个需要多少循环
-    // const oneLoop:number=period/this.bytesRemain;
-    const oneLoop:number=period;
+    const oneLoop=Math.ceil(period);
     for(let sample_loc=0;sample_loc<SAMPLE_PER_CLOCK;){
       //禁用或者已经读取完毕
       if (!enable){
@@ -844,7 +842,7 @@ class DPCM{
       }
       //扩大
       for(let i=0;i<oneLoop&&sample_loc<SAMPLE_PER_CLOCK;i++,sample_loc++){
-        this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel&0xff);
+        this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel+127&0xff);
         this.curSeqIndex++;
       }
       //如果已经播放完成一遍
@@ -1138,10 +1136,10 @@ export class Apu{
         //三角波占12.765% 噪声波占7.41% DPCM占42.545%
         //volumeTotal += 0.00851 * this.triangle.triangleSeqDataView.getUint8(t) + 0.00494 * this.noise.noiseSeqDataView.getUint8(t) + 0.00335 * this.dpcm.dpcmSeqDataView.getUint8(t);
         //test
-        // volumeTotal+=2*(this.square0.squareSeqDataView.getUint8(t) + this.square1.squareSeqDataView.getUint8(t));
-        // volumeTotal+=this.triangle.triangleSeqDataView.getUint8(t);
-        // volumeTotal+=this.noise.noiseSeqDataView.getUint8(t);
-        volumeTotal+=0.3*this.dpcm.dpcmSeqDataView.getUint8(t);
+        volumeTotal+=2*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
+        volumeTotal+=this.triangle.triangleSeqDataView.getInt8(t);
+        volumeTotal+=this.noise.noiseSeqDataView.getInt8(t);
+        volumeTotal+=0.5*this.dpcm.dpcmSeqDataView.getInt8(t);
         this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
       }
       //将各个波形中的一些缓存数据清零
