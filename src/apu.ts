@@ -722,56 +722,12 @@ class Noise{
       }else{ //使用包络音量
         volume = this.envelopeVal;
       }
-      output=volume**output;
+      output=volume*output;
       //扩大
       for(let i=0;i<period&&sample_loc<SAMPLE_PER_CLOCK;i++,sample_loc++){
         this.noiseSeqDataView.setUint8(this.curSeqIndex,(output&0xff));
         this.curSeqIndex++;
       }
-    }
-  }
-  //播放
-  public playOld(clockCnt:number,enable:boolean):void{
-    //
-    let cpuLocOld:number = Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
-    for (let sampleLoc:number =Math.floor(clockCnt * SAMPLE_PER_SEC / 240 + 1); sampleLoc <= (clockCnt + 1) * SAMPLE_PER_SEC / 240; sampleLoc++){
-      //计算这个采样点是否要静音
-      if ((!enable) || (this.lenCounter === 0)){
-        this.noiseSeqDataView.setUint8(this.curSeqIndex,0);
-        this.curSeqIndex++;
-        continue;
-      }
-      //计算这两次采样之间，要进行几次LFSR计算
-      const cpuCoc:number = Math.floor(sampleLoc) * CPU_CYCLE_PER_SEC / SAMPLE_PER_SEC;
-      const lfsrCount:number= Math.floor((cpuCoc / this.noiseReg.getNoisePeriod()) - (cpuLocOld / this.noiseReg.getNoisePeriod()));
-      cpuLocOld = cpuCoc;
-      //进行LFSR计算
-      let d0:number = this.regLfsr & 1;
-      for (let t= 0; t < lfsrCount; t++){
-        if (this.noiseReg.getNoiseMode()){
-          //短模式
-          d0 = this.regLfsr & 1;
-          const d6:number = (this.regLfsr & (1 << 6)) ? 1 : 0;
-          const yihuo:number = (d0 ^ d6)?1:0;
-          this.regLfsr = (this.regLfsr >> 1) | (yihuo << 14);
-        }else{
-          //长模式
-          d0 = this.regLfsr & 1;
-          const d1:number = (this.regLfsr & (1 << 1)) ? 1 : 0;
-          const yihuo:number = (d0 ^ d1)?1:0;
-          this.regLfsr = (this.regLfsr >> 1) | (yihuo << 14);
-        }
-      }
-      //计算这个采样点的音量
-      let volume:number;
-      if (this.noiseReg.getEnvelope()){ //使用固定音量
-        volume = this.noiseReg.getVolume();
-      }else{ //使用包络音量
-        volume = this.envelopeVal;
-      }
-      this.noiseSeqDataView.setUint8(this.curSeqIndex,(d0*volume)&0xff);
-      //收尾操作
-      this.curSeqIndex++;
     }
   }
 }
@@ -784,7 +740,9 @@ class DPCM{
   //当前的DMAC样本字节
   public currByte:number;
   //还有多少字节没有完成 
-  public bytesRemain:number; 
+  public bytesRemain:number;
+  //当前字节还有多少位没有读完 
+  public byteRemain:number;
   //当前缓存的音量 
   public outputLevel:number; 
   //播放DPCM需要缓存的内容
@@ -834,11 +792,10 @@ class DPCM{
       break;
     case 2:
       this.dpcmReg.setData(2,value);
+      this.currAddress = this.dpcmReg.getSampleAddress();
       break;
     case 3:
       this.dpcmReg.setData(3,value);
-      //每次写入，重写地址和字节数
-      this.currAddress = this.dpcmReg.getSampleAddress();
       this.bytesRemain = this.dpcmReg.getSampleLen();
       break;
     default:
@@ -861,29 +818,32 @@ class DPCM{
     const oneLoop=Math.ceil(period);
     for(let sample_loc=0;sample_loc<SAMPLE_PER_CLOCK;){
       //禁用或者已经读取完毕
-      if (!enable){
+      if (!enable||!this.bytesRemain){
         this.dpcmSeqDataView.setUint8(this.curSeqIndex,0);
         this.curSeqIndex++;
         sample_loc++;
         continue;
       }
       //当前样本字节已读完，加载下一个样本字节
-      if(this.bytesRemain){
+      if(this.bytesRemain&&!this.byteRemain){
         this.currByte=this.cpuBus.getValue(this.currAddress);
+        this.byteRemain=8;
         if(this.currAddress===0xFFFF){
           this.currAddress=0x8000;
         }else{
           this.currAddress++;
         }
-        //获取当前样本字节的音频值
-        for(let i=0;i<8;i++){
-          if(this.currByte&(1<<i)){
-            if(this.outputLevel<=125) this.outputLevel+=2;
-          }else{
-            if(this.outputLevel>=2) this.outputLevel-=2;
-          }
-        }
         this.bytesRemain--;
+      }
+      //获取当前音频值
+      if(this.byteRemain){
+        this.byteRemain--;
+        if(this.currByte&1){
+          if(this.outputLevel<=125) this.outputLevel+=2;
+        }else{
+          if(this.outputLevel>=2) this.outputLevel-=2;
+        }
+        this.currByte=this.currByte>>1;
       }
       //扩大
       for(let i=0;i<oneLoop&&sample_loc<SAMPLE_PER_CLOCK;i++,sample_loc++){
@@ -1114,35 +1074,35 @@ export class Apu{
     this.square1.play(this.clockCnt, this.statusReg.getPulse1());
     this.triangle.play(this.clockCnt, this.statusReg.getTriangle());
     this.noise.play(this.clockCnt, this.statusReg.getNoise());
-    this.dpcm.play(this.clockCnt, this.statusReg.getNoise());
+    this.dpcm.play(this.clockCnt, this.statusReg.getDMC());
     this.play=false;
     if (this.clockCnt % 4 === 3){
       //混音
       this.seqLen= this.square0.curSeqIndex;
-      let output=0;
-      let pulseOut=0;
-      let tndOut=0;
-      let pulse0=0;
-      let pulse1=0;
-      let triangle=0;
-      let noise=0;
-      let dpmc=0;
+      // let output=0;
+      // let pulseOut=0;
+      // let tndOut=0;
+      // let pulse0=0;
+      // let pulse1=0;
+      // let triangle=0;
+      // let noise=0;
+      // let dpmc=0;
       for (let t= 0; t <= this.seqLen - 1; t++){
-        // let volumeTotal= 0;
+        let volumeTotal= 0;
         // volumeTotal+=1*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
         // volumeTotal+=1*this.triangle.triangleSeqDataView.getUint8(t);
         // volumeTotal+=1*this.noise.noiseSeqDataView.getInt8(t);
-        // volumeTotal+=this.dpcm.dpcmSeqDataView.getUint8(t);
-        // this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
-        pulse0=this.square0.squareSeqDataView.getInt8(t);
-        pulse1=this.square1.squareSeqDataView.getInt8(t);
-        triangle=this.triangle.triangleSeqDataView.getInt8(t);
-        noise=this.noise.noiseSeqDataView.getInt8(t);
-        dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
-        pulseOut=95.88/((8128/(pulse0+pulse1))+100);
-        tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
-        output=pulseOut+tndOut;
-        this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
+        volumeTotal+=this.dpcm.dpcmSeqDataView.getUint8(t);
+        this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
+        // pulse0=this.square0.squareSeqDataView.getInt8(t);
+        // pulse1=this.square1.squareSeqDataView.getInt8(t);
+        // triangle=this.triangle.triangleSeqDataView.getInt8(t);
+        // noise=this.noise.noiseSeqDataView.getInt8(t);
+        // dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
+        // pulseOut=95.88/((8128/(pulse0+pulse1))+100);
+        // tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
+        // output=pulseOut+tndOut;
+        // this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
       }
       //将各个波形中的一些缓存数据清零
       this.square0.clearSquareSeq();
