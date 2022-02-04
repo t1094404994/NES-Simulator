@@ -222,12 +222,12 @@ class DPCMRegister{
 
   //获取样本的地址
   public getSampleAddress():number{
-    return this.data[2]*0x40+0xc000;
+    return this.data[2]<<6|0xc000;
   }
 
   //获取样本的长度
   public getSampleLen():number{
-    return this.data[3]*0x10+1;
+    return this.data[3]<<4|1;
   }
 }
 
@@ -570,7 +570,8 @@ class TriangleWave{
   public play(clockCnt:number,enable:boolean):void{
     //采样周期 三角波是特例，以CPU周期为单位
     const cycle:number=(16*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC);
-    const sinle:number=cycle/32;
+    const sinle:number=Math.floor(cycle/32)>0?Math.floor(cycle/32):1;
+    // const sinle=2;
     for(let sampleLoc=0;sampleLoc<SAMPLE_PER_CLOCK;sampleLoc++){
       //计算这个采样点是否要静音. 长度计数器和线性计数器中，只要有一个为零，就静音
       if ((!enable) || (this.lenCounter === 0) || (this.linearCounter === 0)){
@@ -750,13 +751,17 @@ class DPCM{
   public dpcmSeqDataView:DataView;
   //当前
   public curSeqIndex:number;
-
+  //消除越界时的问题
+  public lastValue:number;
+  public lastNum:number;
   //CPU总线
   public cpuBus:CpuBus;
   constructor(){
     this.dpcmReg=new DPCMRegister();
     this.dpcmSeq=new ArrayBuffer(SAMPLE_PER_CLOCK*4);
     this.dpcmSeqDataView=new DataView(this.dpcmSeq);
+    this.lastValue=0;
+    this.lastNum=0;
   }
 
   public reset():void{
@@ -765,6 +770,8 @@ class DPCM{
     this.bytesRemain=0;
     this.outputLevel=0;
     this.curSeqIndex=0;
+    this.lastNum=0;
+    this.lastValue=0;
     this.clearDpcmSeq();
   }
 
@@ -819,6 +826,13 @@ class DPCM{
     const period=SAMPLE_PER_SEC*fcPeriod/CPU_CYCLE_PER_SEC;
     const oneLoop=Math.ceil(period);
     for(let sample_loc=0;sample_loc<SAMPLE_PER_CLOCK;){
+      //上次没有写完的补足
+      // while(this.lastNum){
+      //   this.lastNum--;
+      //   this.dpcmSeqDataView.setInt8(this.curSeqIndex,(this.lastValue-63)/2);
+      //   this.curSeqIndex++;
+      //   sample_loc++;
+      // }
       //禁用或者已经读取完毕
       if (!enable||!this.bytesRemain){
         this.dpcmSeqDataView.setUint8(this.curSeqIndex,0);
@@ -830,11 +844,7 @@ class DPCM{
       if(this.bytesRemain&&!this.byteRemain){
         this.currByte=this.cpuBus.getValue(this.currAddress);
         this.byteRemain=8;
-        if(this.currAddress===0xFFFF){
-          this.currAddress=0x8000;
-        }else{
-          this.currAddress++;
-        }
+        this.currAddress=this.currAddress+1|0x8000;
         this.bytesRemain--;
       }
       //获取当前音频值
@@ -848,9 +858,13 @@ class DPCM{
         this.currByte=this.currByte>>1;
       }
       //扩大
-      for(let i=0;i<oneLoop&&sample_loc<SAMPLE_PER_CLOCK;i++,sample_loc++){
+      for(let i=0;i<oneLoop;i++){
         this.dpcmSeqDataView.setInt8(this.curSeqIndex,(this.outputLevel-63)/2);
         this.curSeqIndex++;
+        sample_loc++;
+        if(sample_loc===SAMPLE_PER_CLOCK){
+          break;
+        }
       }
       //如果已经播放完成一遍
       if (this.bytesRemain === 0){
@@ -1100,13 +1114,12 @@ export class Apu{
         pulse1=this.square1.squareSeqDataView.getInt8(t);
         triangle=this.triangle.triangleSeqDataView.getInt8(t);
         noise=this.noise.noiseSeqDataView.getInt8(t);
-        dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
+        dpmc=0.5*this.dpcm.dpcmSeqDataView.getInt8(t);
         pulseOut=95.88/((8128/(pulse0+pulse1))+100);
         tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
         output=pulseOut+tndOut;
         this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
         this.seqDataArr[t]=output;
-        // this.seqDataArr[t]=dpmc/64;
       }
       //将各个波形中的一些缓存数据清零
       this.square0.clearSquareSeq();
@@ -1118,9 +1131,6 @@ export class Apu{
       this.square1.curSeqIndex = 0;
       this.triangle.curSeqIndex = 0;
       this.noise.curSeqIndex = 0;
-      if(this.dpcm.curSeqIndex!==736&&this.dpcm.curSeqIndex!==0){
-        console.warn('没有达到期望值',this.dpcm.curSeqIndex);
-      }
       this.dpcm.curSeqIndex = 0;
       this.play=true;
     }
