@@ -274,7 +274,9 @@ export class Main{
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         for(let i=0;i<allFrame;i++){
           //[-1,1]
-          buffer[i]=RegionZoom(this.apu.seqDataView.getInt16(i*2),-32767,32767,-1,1);
+          // buffer[i]=RegionZoom(this.apu.seqDataView.getInt8(i),-127,127,-1,1);
+          // buffer[i]=RegionZoom(this.apu.seqDataView.getInt16(i*2),-32767,32767,-1,1);
+          buffer[i]=this.apu.seqDataArr[i];
         }
       }
       //创建音频资源节点

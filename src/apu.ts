@@ -805,8 +805,10 @@ class DPCM{
   }
 
   public play(clockCnt:number,enable:boolean):void{
-    //如果已经读取完成。
-    if(!this.bytesRemain) return;
+    // //如果已经读取完成。
+    // if(!this.bytesRemain){
+    //   return;
+    // }
     //FC中的PCM原始周期
     const fcPeriod=this.dpcmReg.getPeriod();
     //是否循环
@@ -847,7 +849,7 @@ class DPCM{
       }
       //扩大
       for(let i=0;i<oneLoop&&sample_loc<SAMPLE_PER_CLOCK;i++,sample_loc++){
-        this.dpcmSeqDataView.setUint8(this.curSeqIndex,this.outputLevel);
+        this.dpcmSeqDataView.setInt8(this.curSeqIndex,(this.outputLevel-63)/2);
         this.curSeqIndex++;
       }
       //如果已经播放完成一遍
@@ -887,6 +889,7 @@ export class Apu{
   public seq:ArrayBuffer;
   public seqDataView:DataView;
   public seqLen:number;
+  public seqDataArr:Array<number>
   //
   public clockCnt:number;
   public play:boolean;
@@ -904,6 +907,8 @@ export class Apu{
     //16bit
     this.seq=new ArrayBuffer(SAMPLE_PER_CLOCK*4*2);
     this.seqDataView=new DataView(this.seq);
+    this.seqDataArr=[];
+    this.seqDataArr.length=SAMPLE_PER_CLOCK*4;
   }
 
 
@@ -924,6 +929,9 @@ export class Apu{
   public clearSqe():void{
     for(let i=0,l=this.seq.byteLength;i<l;i++){
       this.seqDataView.setUint8(i,0);
+    }
+    for(let i=0,l=this.seqDataArr.length;i<l;i++){
+      this.seqDataArr[i]=0;
     }
   }
 
@@ -1079,30 +1087,26 @@ export class Apu{
     if (this.clockCnt % 4 === 3){
       //混音
       this.seqLen= this.square0.curSeqIndex;
-      // let output=0;
-      // let pulseOut=0;
-      // let tndOut=0;
-      // let pulse0=0;
-      // let pulse1=0;
-      // let triangle=0;
-      // let noise=0;
-      // let dpmc=0;
+      let output=0;
+      let pulseOut=0;
+      let tndOut=0;
+      let pulse0=0;
+      let pulse1=0;
+      let triangle=0;
+      let noise=0;
+      let dpmc=0;
       for (let t= 0; t <= this.seqLen - 1; t++){
-        let volumeTotal= 0;
-        // volumeTotal+=1*(this.square0.squareSeqDataView.getInt8(t) + this.square1.squareSeqDataView.getInt8(t));
-        // volumeTotal+=1*this.triangle.triangleSeqDataView.getUint8(t);
-        // volumeTotal+=1*this.noise.noiseSeqDataView.getInt8(t);
-        volumeTotal+=this.dpcm.dpcmSeqDataView.getUint8(t);
-        this.seqDataView.setUint8(t,Math.floor(volumeTotal)&0xff);
-        // pulse0=this.square0.squareSeqDataView.getInt8(t);
-        // pulse1=this.square1.squareSeqDataView.getInt8(t);
-        // triangle=this.triangle.triangleSeqDataView.getInt8(t);
-        // noise=this.noise.noiseSeqDataView.getInt8(t);
-        // dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
-        // pulseOut=95.88/((8128/(pulse0+pulse1))+100);
-        // tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
-        // output=pulseOut+tndOut;
-        // this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
+        pulse0=this.square0.squareSeqDataView.getInt8(t);
+        pulse1=this.square1.squareSeqDataView.getInt8(t);
+        triangle=this.triangle.triangleSeqDataView.getInt8(t);
+        noise=this.noise.noiseSeqDataView.getInt8(t);
+        dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
+        pulseOut=95.88/((8128/(pulse0+pulse1))+100);
+        tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
+        output=pulseOut+tndOut;
+        this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
+        this.seqDataArr[t]=output;
+        // this.seqDataArr[t]=dpmc/64;
       }
       //将各个波形中的一些缓存数据清零
       this.square0.clearSquareSeq();
@@ -1114,6 +1118,9 @@ export class Apu{
       this.square1.curSeqIndex = 0;
       this.triangle.curSeqIndex = 0;
       this.noise.curSeqIndex = 0;
+      if(this.dpcm.curSeqIndex!==736&&this.dpcm.curSeqIndex!==0){
+        console.warn('没有达到期望值',this.dpcm.curSeqIndex);
+      }
       this.dpcm.curSeqIndex = 0;
       this.play=true;
     }
