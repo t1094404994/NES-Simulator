@@ -33,7 +33,8 @@ const DPCMPeriodMap:Array<number>= [428, 380, 340, 320, 286, 254, 226, 214, 190,
 const SAMPLE_PER_SEC=44100;
 //CPU频率
 const CPU_CYCLE_PER_SEC=1789773;
-//const CPU_CYCLE_PER_SEC=1662607 ;
+//每次采样的周期
+const CPU_CYCLE_PER_SAMPLE=CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC;
 //一次需要的采样数
 const SAMPLE_PER_CLOCK=Math.floor(SAMPLE_PER_SEC / 240 + 1);
 
@@ -299,15 +300,17 @@ class SquareWave{
   public sweepRestart:boolean;
   //滑音的分频器
   public sweepDivider:number;
-  //当前方波的频率
+  //当前方波的频率(APU)
   public currPeriod:number; 
+  public currCpuPeriod:number; 
   //长度计数器
   public lenCounter:number; 
   // 播放方波时需要缓存的内容
   public squareSeq:ArrayBuffer;
   public squareSeqDataView:DataView;
   //上次运行到方波的什么位置了
-  public seqLocOld:number;
+  public cycle:number;
+  public index:number;
   public curSeqIndex:number;
   constructor(_id:number){
     this.squareId=_id;
@@ -327,9 +330,11 @@ class SquareWave{
     this.envelopeValue=0;
     this.sweepRestart=false;
     this.sweepDivider=0;
-    this.currPeriod=0;
+    this.currPeriod=1;
+    this.currCpuPeriod=2;
     this.lenCounter=0;
-    this.seqLocOld=0;
+    this.cycle=0;
+    this.index=0;
     this.curSeqIndex=0;
     this.clearSquareSeq();
   }
@@ -358,13 +363,14 @@ class SquareWave{
     case 3:
       this.regSquare.setData(3,value);
       this.currPeriod=this.regSquare.getPeriod();
+      this.currCpuPeriod=this.currPeriod*2;
       //写入$4003会重置包络
       this.envelopeRestart = true; 
       //在方波启用的情况下，写入$4003会重置长度计数器
       if (enable) 
         this.lenCounter = this.regSquare.getLenCounter();
-      //这里先做一个简单的近似处理。在每个clock起始的位置重置方波和改变频率。实际情况应该是写入之后立即重置方波和改变频率，但先允许有1/240秒的误差
-      this.seqLocOld = 0;
+      this.cycle = 0;
+      this.index=0;
       break;
     default:
       console.warn('向方波寄存器写入下标0,1,2,3');
@@ -391,9 +397,6 @@ class SquareWave{
         else{
           this.envelopeValue--;
         }
-        // else if(this.envelopeValue>0){
-        //   this.envelopeValue--;
-        // }
       }else{
         this.envelopeDivider--;
       }
@@ -430,29 +433,29 @@ class SquareWave{
   }
 
   //播放时
-  public play(clockCnt:number,enable:boolean):void{
-    //const cpuLocOld:number =Math.floor(clockCnt * CPU_CYCLE_PER_SEC / 240);
-    //采样周期 A/T1=B/T2 频率不变
-    const cycle:number=(16*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC);
-    const sinle:number=cycle/8;
-    for (let sampleLoc = 0; sampleLoc <SAMPLE_PER_SEC / 240; sampleLoc++){
+  public play(enable:boolean):void{
+    for (let sampleLoc = 0; sampleLoc <SAMPLE_PER_CLOCK; sampleLoc++){
       //计算这个采样点是否要静音
       let mute = false;
       if ((!enable) || (this.lenCounter === 0)){
         mute = true;
         this.squareSeqDataView.setUint8(this.curSeqIndex,0);
-        this.seqLocOld=0;
+        this.cycle=0;
+        this.index=0;
         this.curSeqIndex++;
         continue;
       }
       else if (this.currPeriod <= 7 || this.currPeriod >= 0x800){
         mute = true;
       }
-      
-      if(this.seqLocOld>=cycle){
-        this.seqLocOld=0;
+      this.cycle+=CPU_CYCLE_PER_SAMPLE*0.5;
+      const count=Math.floor(this.cycle/this.currPeriod);
+      this.cycle-=count*this.currPeriod;
+      this.index+=count;
+      if(this.index>=8){
+        this.index=0;
       }
-      const seqVal:number=SquareWaveMap[this.regSquare.getDuty()][Math.floor(this.seqLocOld/sinle)]?1:-1;
+      const seqVal:number=SquareWaveMap[this.regSquare.getDuty()][this.index]?1:-1;
       //计算这个采样点的音量
       let volume:number;
       if (mute){
@@ -467,9 +470,7 @@ class SquareWave{
         volume = this.envelopeValue;
       }
       this.squareSeqDataView.setUint8(this.curSeqIndex,(seqVal * volume)&0xff);
-      //收尾操作
       this.curSeqIndex++;
-      this.seqLocOld++;
     }
   }
 }
@@ -492,8 +493,10 @@ class TriangleWave{
   public triangleSeqDataView:DataView;
   //当前位置
   public curSeqIndex:number;
-  //上次位置
-  public seqLocOld:number;
+  //周期计数
+  public cycle:number;
+  //索引
+  public index:number;
   constructor(){
     this.triangleReg=new TriangularRegister();
     this.triangleSeq=new ArrayBuffer(SAMPLE_PER_CLOCK*4);
@@ -509,9 +512,10 @@ class TriangleWave{
     this.linearCounter=0;
     this.lenCounter=0;
     this.linearRestart=false;
-    this.currPeriod=0;
+    this.currPeriod=1;
     this.curSeqIndex=0;
-    this.seqLocOld=0;
+    this.cycle=0;
+    this.index=0;
   }
 
   public clearTriangleSeq():void{
@@ -567,26 +571,27 @@ class TriangleWave{
       this.linearRestart = false;
   } 
 
-  public play(clockCnt:number,enable:boolean):void{
+  public play(enable:boolean):void{
     //采样周期 三角波是特例，以CPU周期为单位
-    const cycle:number=(16*(this.currPeriod+1))/(CPU_CYCLE_PER_SEC/SAMPLE_PER_SEC);
-    const sinle:number=Math.floor(cycle/32)>0?Math.floor(cycle/32):1;
-    // const sinle=2;
     for(let sampleLoc=0;sampleLoc<SAMPLE_PER_CLOCK;sampleLoc++){
       //计算这个采样点是否要静音. 长度计数器和线性计数器中，只要有一个为零，就静音
       if ((!enable) || (this.lenCounter === 0) || (this.linearCounter === 0)){
         this.triangleSeqDataView.setUint8(this.curSeqIndex,0);
-        this.seqLocOld = 0;
         this.curSeqIndex++;
+        this.cycle = 0;
+        this.index=0;
         continue;
       }
-      if(this.seqLocOld>=cycle){
-        this.seqLocOld=0;
+      this.cycle+=CPU_CYCLE_PER_SAMPLE;
+      const count=Math.floor(this.cycle/this.currPeriod);
+      this.cycle-=count*this.currPeriod;
+      this.index+=count;
+      if(this.index>=TriangleWaveMap.length){
+        this.index=0;
       }
-      const seqVal:number=TriangleWaveMap[Math.floor(this.seqLocOld/sinle)]-8;
+      const seqVal:number=TriangleWaveMap[this.index];
       this.triangleSeqDataView.setUint8(this.curSeqIndex,seqVal);
       this.curSeqIndex++;
-      this.seqLocOld++;
     }
   }
 }
@@ -673,9 +678,6 @@ class Noise{
         else{
           this.envelopeVal--;
         }
-        // else if(this.envelopeValue>0){
-        //   this.envelopeValue--;
-        // }
       }else{
         this.envelopeDivider--;
       }
@@ -689,7 +691,7 @@ class Noise{
     }
   }
   //播放
-  public play(clockCnt:number,enable:boolean):void{
+  public play(enable:boolean):void{
     //FC中的PCM原始周期
     const fcPeriod=this.noiseReg.getNoisePeriod();
     //根据现在设置的采样率。算出新周期 A/T1=B/T2
@@ -751,17 +753,15 @@ class DPCM{
   public dpcmSeqDataView:DataView;
   //当前
   public curSeqIndex:number;
-  //消除越界时的问题
-  public lastValue:number;
-  public lastNum:number;
+  //当前周期计数
+  private cycle:number;
   //CPU总线
   public cpuBus:CpuBus;
   constructor(){
     this.dpcmReg=new DPCMRegister();
     this.dpcmSeq=new ArrayBuffer(SAMPLE_PER_CLOCK*4);
     this.dpcmSeqDataView=new DataView(this.dpcmSeq);
-    this.lastValue=0;
-    this.lastNum=0;
+    this.cycle=0;
   }
 
   public reset():void{
@@ -770,8 +770,7 @@ class DPCM{
     this.bytesRemain=0;
     this.outputLevel=0;
     this.curSeqIndex=0;
-    this.lastNum=0;
-    this.lastValue=0;
+    this.cycle=0;
     this.clearDpcmSeq();
   }
 
@@ -810,73 +809,64 @@ class DPCM{
       break;
     }
   }
+  //进行一次DPCM数据写入
+  public setDpmc():void{
+    if (this.bytesRemain && (!this.byteRemain)){
+      //当前样本字节已经读完了，load下一个样本字节
+      this.currByte = this.cpuBus.getValue(this.currAddress);
+      if (this.currAddress === 0xFFFF)
+        this.currAddress = 0x8000;
+      else
+        this.currAddress++;
+      this.bytesRemain--;
+      this.byteRemain = 8;
+    }
+    if (this.byteRemain){
+      //把当前样本字节的音频播放完成 0-127
+      if (this.currByte & 1){
+        if (this.outputLevel <= 125)
+          this.outputLevel += 2;
+      }else{
+        if (this.outputLevel >= 2)
+          this.outputLevel -= 2;
+      }
+      this.byteRemain--;
+      this.currByte >>= 1;
+    }
+    //如果播放完成了，而且设置了IRQ中断，则给出一个IRQ中断
+    if (this.byteRemain === 0 && this.bytesRemain === 0){
+      if (this.dpcmReg.getIRQ())
+        this.cpuBus.tryIRQ();
+      if (this.dpcmReg.getLoop()){
+        this.currAddress = this.dpcmReg.getSampleAddress();
+        this.bytesRemain = this.dpcmReg.getSampleLen();
+      }
+    }
+  }
 
-  public play(clockCnt:number,enable:boolean):void{
+  public play(enable:boolean):void{
     // //如果已经读取完成。
-    // if(!this.bytesRemain){
-    //   return;
-    // }
+    if(!this.bytesRemain){
+      return;
+    }
     //FC中的PCM原始周期
     const fcPeriod=this.dpcmReg.getPeriod();
-    //是否循环
-    const loop=this.dpcmReg.getLoop();
-    //是否触发irq中断
-    const irq=this.dpcmReg.getIRQ();
     //根据现在设置的采样率。算出新周期 A/T1=B/T2
     const period=SAMPLE_PER_SEC*fcPeriod/CPU_CYCLE_PER_SEC;
-    const oneLoop=Math.ceil(period);
-    for(let sample_loc=0;sample_loc<SAMPLE_PER_CLOCK;){
-      //上次没有写完的补足
-      // while(this.lastNum){
-      //   this.lastNum--;
-      //   this.dpcmSeqDataView.setInt8(this.curSeqIndex,(this.lastValue-63)/2);
-      //   this.curSeqIndex++;
-      //   sample_loc++;
-      // }
-      //禁用或者已经读取完毕
-      if (!enable||!this.bytesRemain){
-        this.dpcmSeqDataView.setUint8(this.curSeqIndex,0);
+    for(let sample_loc=0;sample_loc<SAMPLE_PER_CLOCK;sample_loc++){
+      if(!enable||!this.bytesRemain){
+        this.dpcmSeqDataView.setInt8(this.curSeqIndex,0);
         this.curSeqIndex++;
-        sample_loc++;
+        this.cycle=0;
         continue;
       }
-      //当前样本字节已读完，加载下一个样本字节
-      if(this.bytesRemain&&!this.byteRemain){
-        this.currByte=this.cpuBus.getValue(this.currAddress);
-        this.byteRemain=8;
-        this.currAddress=this.currAddress+1|0x8000;
-        this.bytesRemain--;
+      this.cycle+=CPU_CYCLE_PER_SAMPLE;
+      if(this.cycle>period){
+        this.cycle-=period;
+        this.setDpmc();
       }
-      //获取当前音频值
-      if(this.byteRemain){
-        this.byteRemain--;
-        if(this.currByte&1){
-          if(this.outputLevel<=125) this.outputLevel+=2;
-        }else{
-          if(this.outputLevel>=2) this.outputLevel-=2;
-        }
-        this.currByte=this.currByte>>1;
-      }
-      //扩大
-      for(let i=0;i<oneLoop;i++){
-        this.dpcmSeqDataView.setInt8(this.curSeqIndex,this.outputLevel-64);
-        this.curSeqIndex++;
-        sample_loc++;
-        if(sample_loc===SAMPLE_PER_CLOCK){
-          break;
-        }
-      }
-      //如果已经播放完成一遍
-      if (this.bytesRemain === 0){
-        //是否触发IRQ
-        if (irq)
-          this.cpuBus.tryIRQ();
-        //是否循环
-        if (loop){
-          this.currAddress = this.dpcmReg.getSampleAddress();
-          this.bytesRemain = this.dpcmReg.getSampleLen();
-        }
-      }
+      this.dpcmSeqDataView.setInt8(this.curSeqIndex,this.outputLevel);
+      this.curSeqIndex++;
     }
   }
 }
@@ -1046,19 +1036,13 @@ export class Apu{
       case 1:
         this.onLengthSweepClock();
         this.onEnvelopeLinearClock();
-        //this.onEnvelopeLinearClock();
         break;
       case 2:
-        //this.onLengthSweepClock();
         this.onEnvelopeLinearClock();
         break;
-      // case 3:
-      //   this.onEnvelopeLinearClock();
-      //   break;
       case 4:
         this.onLengthSweepClock();
         this.onEnvelopeLinearClock();
-        //this.onLengthSweepClock();
         break;
       default:
         break;
@@ -1089,50 +1073,64 @@ export class Apu{
     this.clockCnt++;
   }
 
+  public mix():void{
+    //混音
+    this.seqLen= this.square0.curSeqIndex;
+    let output=0;
+    let pulseOut=0;
+    let tndOut=0;
+    let pulse0=0;
+    let pulse1=0;
+    let triangle=0;
+    let noise=0;
+    let dpmc=0;
+    for (let t= 0; t <= this.seqLen - 1; t++){
+      pulse0=this.square0.squareSeqDataView.getInt8(t);
+      pulse1=this.square1.squareSeqDataView.getInt8(t);
+      triangle=this.triangle.triangleSeqDataView.getInt8(t);
+      noise=this.noise.noiseSeqDataView.getInt8(t);
+      dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
+      pulseOut=95.88/((8128/(pulse0+pulse1))+100);
+      tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
+      output=pulseOut+tndOut;
+      this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
+      this.seqDataArr[t]=output;
+      // this.seqDataArr[t]=triangle/32;
+    }
+  }
+
+  public clearAudio():void{
+    //将各个波形中的一些缓存数据清零
+    this.square0.clearSquareSeq();
+    this.square1.clearSquareSeq();
+    this.triangle.clearTriangleSeq();
+    this.noise.clearNoiseSeq();
+    this.dpcm.clearDpcmSeq();
+    this.square0.curSeqIndex= 0;
+    this.square1.curSeqIndex = 0;
+    this.triangle.curSeqIndex = 0;
+    this.noise.curSeqIndex = 0;
+    this.dpcm.curSeqIndex = 0;
+  }
+
+  public setAudio():void{
+    this.square0.play(this.statusReg.getPulse0());
+    this.square1.play(this.statusReg.getPulse1());
+    this.triangle.play(this.statusReg.getTriangle());
+    this.noise.play(this.statusReg.getNoise());
+    this.dpcm.play(this.statusReg.getDMC());
+  }
+
   //播放一个单位的音频
   public genWave():void{
-    //生成方波、三角波、噪音、DPCM
-    this.square0.play(this.clockCnt, this.statusReg.getPulse0());
-    this.square1.play(this.clockCnt, this.statusReg.getPulse1());
-    this.triangle.play(this.clockCnt, this.statusReg.getTriangle());
-    this.noise.play(this.clockCnt, this.statusReg.getNoise());
-    this.dpcm.play(this.clockCnt, this.statusReg.getDMC());
+    //生成方波、三角波、噪音、DPCM数据
+    this.setAudio();
     this.play=false;
     if (this.clockCnt % 4 === 3){
       //混音
-      this.seqLen= this.square0.curSeqIndex;
-      let output=0;
-      let pulseOut=0;
-      let tndOut=0;
-      let pulse0=0;
-      let pulse1=0;
-      let triangle=0;
-      let noise=0;
-      let dpmc=0;
-      for (let t= 0; t <= this.seqLen - 1; t++){
-        pulse0=this.square0.squareSeqDataView.getInt8(t);
-        pulse1=this.square1.squareSeqDataView.getInt8(t);
-        triangle=this.triangle.triangleSeqDataView.getInt8(t);
-        noise=this.noise.noiseSeqDataView.getInt8(t);
-        dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
-        pulseOut=95.88/((8128/(pulse0+pulse1))+100);
-        tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
-        output=pulseOut+tndOut;
-        this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
-        // this.seqDataArr[t]=output;
-        this.seqDataArr[t]=dpmc/128;
-      }
-      //将各个波形中的一些缓存数据清零
-      this.square0.clearSquareSeq();
-      this.square1.clearSquareSeq();
-      this.triangle.clearTriangleSeq();
-      this.noise.clearNoiseSeq();
-      this.dpcm.clearDpcmSeq();
-      this.square0.curSeqIndex= 0;
-      this.square1.curSeqIndex = 0;
-      this.triangle.curSeqIndex = 0;
-      this.noise.curSeqIndex = 0;
-      this.dpcm.curSeqIndex = 0;
+      this.mix();
+      //清除数据
+      this.clearAudio();
       this.play=true;
     }
   }

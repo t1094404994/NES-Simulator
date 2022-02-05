@@ -67,6 +67,7 @@ export class CartridgeReader{
     const nameTableMirror:number= this.dataView.getUint8(6) & 0xb;
     //MAPPER类型
     this.mapperId= ((this.dataView.getUint8(6) >> 4) & 0xf) | (this.dataView.getUint8(7) & 0xf0);
+    console.log('当前卡带类型',this.mapperId);
     //有无增加ROM
     this.hasAddedRom=(this.dataView.getUint8(6) & 0x2)!==0;
     if(this.mapperId===0){

@@ -23,7 +23,7 @@
   "scripts": {
     "start": "webpack serve --open --config webpack.dev.js",
     "build": "webpack --config webpack.prod.js",
-    "dev": "vite",
+    "dev": "vite --host",
     "build-vite": "vite build",
     "preview-vite": "vite preview",
     "lint": "eslint src"
