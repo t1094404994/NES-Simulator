@@ -859,7 +859,7 @@ class DPCM{
       }
       //扩大
       for(let i=0;i<oneLoop;i++){
-        this.dpcmSeqDataView.setInt8(this.curSeqIndex,(this.outputLevel-63)/2);
+        this.dpcmSeqDataView.setInt8(this.curSeqIndex,this.outputLevel-64);
         this.curSeqIndex++;
         sample_loc++;
         if(sample_loc===SAMPLE_PER_CLOCK){
@@ -1114,12 +1114,13 @@ export class Apu{
         pulse1=this.square1.squareSeqDataView.getInt8(t);
         triangle=this.triangle.triangleSeqDataView.getInt8(t);
         noise=this.noise.noiseSeqDataView.getInt8(t);
-        dpmc=0.5*this.dpcm.dpcmSeqDataView.getInt8(t);
+        dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
         pulseOut=95.88/((8128/(pulse0+pulse1))+100);
         tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
         output=pulseOut+tndOut;
         this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
-        this.seqDataArr[t]=output;
+        // this.seqDataArr[t]=output;
+        this.seqDataArr[t]=dpmc/128;
       }
       //将各个波形中的一些缓存数据清零
       this.square0.clearSquareSeq();

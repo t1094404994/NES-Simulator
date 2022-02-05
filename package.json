@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "nes simulator",
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "vite": "^2.7.13"
+  },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^4.31.1",
     "@typescript-eslint/parser": "^4.31.1",
@@ -21,6 +23,9 @@
   "scripts": {
     "start": "webpack serve --open --config webpack.dev.js",
     "build": "webpack --config webpack.prod.js",
+    "dev": "vite",
+    "build-vite": "vite build",
+    "preview-vite": "vite preview",
     "lint": "eslint src"
   },
   "repository": {
