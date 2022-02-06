@@ -1,7 +1,7 @@
 //声音处理
 
 import { CpuBus } from './cpuBus';
-import { CPU_CYCLE_PER_SEC} from './cpu';
+import { CPU_CYCLE_PER_FRAME, CPU_CYCLE_PER_SEC} from './cpu';
 
 //长度计数器
 const LengthCounterMap:Array<number>=[
@@ -605,6 +605,8 @@ class Noise{
   public lenCounter:number; 
   //LSFR寄存器
   public regLfsr:number;
+  public output:number
+  public cycle:number;
   //播放噪声时需要缓存的内容
   public noiseSeq:ArrayBuffer;
   public noiseSeqDataView:DataView;
@@ -620,7 +622,9 @@ class Noise{
     this.envelopeDivider=0;
     this.envelopeVal=0;
     this.lenCounter=0;
+    this.output=0;
     this.regLfsr=1;
+    this.cycle=0;
     this.clearNoiseSeq();
   }
 
@@ -682,45 +686,49 @@ class Noise{
       this.lenCounter -= 1;
     }
   }
+  
+  public setLfsr():void{
+    //进行LFSR计算
+    const d0:number = this.regLfsr & 1;
+    let output:number;
+    if (this.noiseReg.getNoiseMode()){
+      //短模式
+      const d6:number = (this.regLfsr>>6 & 1);
+      output = (d0 ^ d6)?1:0;
+      this.regLfsr = (this.regLfsr >> 1) | (output << 14);
+    }else{
+      //长模式
+      const d1:number = (this.regLfsr>>1 & 1);
+      output = (d0 ^ d1)?1:0;
+      this.regLfsr = (this.regLfsr >> 1) | (output << 14);
+    }
+    //计算这个采样点的音量
+    let volume:number;
+    if (this.noiseReg.getEnvelope()){ //使用固定音量
+      volume = this.noiseReg.getVolume();
+    }else{ //使用包络音量
+      volume = this.envelopeVal;
+    }
+    this.output=volume*output;
+  }
+
   //播放
   public play(enable:boolean,start:number,end:number):void{
-    //FC中的PCM原始周期
-    const fcPeriod=this.noiseReg.getNoisePeriod();
-    //根据现在设置的采样率。算出新周期 A/T1=B/T2
-    const period=SAMPLE_PER_SEC*fcPeriod/CPU_CYCLE_PER_SEC;
-    for(let sample_loc=start;sample_loc<end;){
+    for(let sample_loc=start;sample_loc<end;sample_loc++){
       //禁用或者已经输出完毕
       if (!enable||(this.lenCounter===0)){
         this.noiseSeqDataView.setUint8(sample_loc,0);
         sample_loc++;
+        this.cycle=0;
         continue;
       }
-      //进行LFSR计算
-      const d0:number = this.regLfsr & 1;
-      let output:number;
-      if (this.noiseReg.getNoiseMode()){
-        //短模式
-        const d6:number = (this.regLfsr>>6 & 1);
-        output = (d0 ^ d6)?1:0;
-        this.regLfsr = (this.regLfsr >> 1) | (output << 14);
-      }else{
-        //长模式
-        const d1:number = (this.regLfsr>>1 & 1);
-        output = (d0 ^ d1)?1:0;
-        this.regLfsr = (this.regLfsr >> 1) | (output << 14);
+      this.cycle+=CPU_CYCLE_PER_SAMPLE;
+      const count=Math.floor(this.cycle/this.noiseReg.getNoisePeriod());
+      this.cycle-=count*this.noiseReg.getNoisePeriod();
+      for(let i=0;i<count;i++){
+        this.setLfsr();
       }
-      //计算这个采样点的音量
-      let volume:number;
-      if (this.noiseReg.getEnvelope()){ //使用固定音量
-        volume = this.noiseReg.getVolume();
-      }else{ //使用包络音量
-        volume = this.envelopeVal;
-      }
-      output=volume*output;
-      //扩大
-      for(let i=0;i<period&&sample_loc<end;i++,sample_loc++){
-        this.noiseSeqDataView.setUint8(sample_loc,(output&0xff));
-      }
+      this.noiseSeqDataView.setUint8(sample_loc,this.output);
     }
   }
 }
@@ -1032,14 +1040,20 @@ export class Apu{
         this.onEnvelopeLinearClock();
         break;
       case 1:
+        // this.onLengthSweepClock();
+        // this.onEnvelopeLinearClock();
         this.onLengthSweepClock();
-        this.onEnvelopeLinearClock();
         break;
       case 2:
+        // this.onEnvelopeLinearClock();
         this.onEnvelopeLinearClock();
         break;
-      case 4:
+      case 3:
         this.onLengthSweepClock();
+        break;
+      case 4:
+        // this.onLengthSweepClock();
+        // this.onEnvelopeLinearClock();
         this.onEnvelopeLinearClock();
         break;
       default:
@@ -1048,23 +1062,27 @@ export class Apu{
     }else{
       switch (this.clockCnt % 4){
       case 0:
-        this.onEnvelopeLinearClock();
+        // this.onEnvelopeLinearClock();
+        this.onFrameIrq();
         break;
       case 1:
+        // this.onLengthSweepClock();
+        // this.onEnvelopeLinearClock();
         this.onLengthSweepClock();
-        this.onEnvelopeLinearClock();
         break;
       case 2:
-        this.onEnvelopeLinearClock();
+        // this.onEnvelopeLinearClock();
         break;
       case 3:
         this.onLengthSweepClock();
-        this.onEnvelopeLinearClock();
-        this.onFrameIrq();
+        // this.onLengthSweepClock();
+        // this.onEnvelopeLinearClock();
+        // this.onFrameIrq();
         break;
       default:
         break;
       }
+      this.onEnvelopeLinearClock();
     }
     //播放音频
     this.genWave(cytle);
@@ -1092,6 +1110,7 @@ export class Apu{
       output=pulseOut+tndOut;
       this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
       this.seqDataArr[t]=output;
+      // this.seqDataArr[t]=noise/64;
     }
   }
 
