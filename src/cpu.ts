@@ -1,7 +1,10 @@
 //NES的6502CPU模拟
 
 import { CpuBus } from './cpuBus';
-
+//CPU频率
+export const CPU_CYCLE_PER_SEC=1789773;
+//一帧画面的CPU周期
+export const CPU_CYCLE_PER_FRAME=Math.ceil(CPU_CYCLE_PER_SEC/60);
 //状态寄存器
 class StatusFlag{
   private data:number;
@@ -164,6 +167,8 @@ export class Cpu{
   private opcodeMapTable:Array<Instruction>;
   //等待循环
   private cyclesWait:number;
+  //该帧中当前的cpu周期
+  public cycleFrame:number;
   //IRQ计数器 右1变为0则执行IRQ中断
   public irqCounter:number;
   //
@@ -177,16 +182,20 @@ export class Cpu{
   //CUP总线的引用
   public cpuBus:CpuBus;
 
+  //画面刷新率
+  public frame:number;
   constructor(){
     this.regSf=new StatusFlag();
     this.regSpOffSet=0x100;
     this.cyclesWait=0;
+    this.cycleFrame=0;
     this.clockCount=0;
     this.address=0;
     this.addressRel=0;
     this.irqCounter=0;
     this.irqFlag=0;
     this.irqInProcess=0;
+    this.setFrame(60);
     this.initTable();
   }
 
@@ -212,6 +221,11 @@ export class Cpu{
 
   public setCpuBus(_cpuBus:CpuBus):void{
     this.cpuBus=_cpuBus;
+  }
+
+  public setFrame(_frame:number):void{
+    this.frame=_frame;
+    
   }
 
   //初始化操作指令表
@@ -265,6 +279,7 @@ export class Cpu{
       else this.cyclesWait += (instrCycles & modeCycles);
       this.regSf.setU(true);
       this.testCycles+=this.cyclesWait;
+      this.cycleFrame+=this.cyclesWait;
       //27039270  27039470
       // if(){
       //   console.log('opcode:'+this.opcode+'/'+instr.name+'    address:'+this.address+'regPC:'+this.regPc+'周期:'+this.testCycles);
@@ -278,6 +293,16 @@ export class Cpu{
     this.clockCount++;
   }
 
+  //一帧渲染完成后的回调
+  public randerCall():void{
+    //如果没有跑满，则继续执行
+    while(this.cycleFrame<CPU_CYCLE_PER_FRAME){
+      this.step();
+    }
+    this.cycleFrame-=CPU_CYCLE_PER_FRAME;
+    // this.cycleFrame=0;
+  }
+
   //CPU执行可屏蔽中断
   public irq():void{
     //console.log('CPU执行可屏蔽中断');
@@ -286,12 +311,12 @@ export class Cpu{
     this.stackPush(this.regPc & 0xFF);
     this.stackPush(this.regSf.getData()|0x20);
     this.regSf.setI(true);
-    //TODO
     const lo:number=this.cpuBus.getValue(0xFFFE);
     const hi:number=this.cpuBus.getValue(0xFFFF)<<8;
     this.regPc =hi+lo;
     //IRQ中断需要7个时钟周期
     this.cyclesWait += 7;
+    this.cycleFrame+=7;
   }
 
   //CPU执行不可屏蔽中断
@@ -308,6 +333,7 @@ export class Cpu{
     this.regPc =hi+lo;
     //有些是8
     this.cyclesWait += 7;
+    this.cycleFrame+=7;
   }
 
   //执行DMA时，CPU会被阻塞513或514个周期
@@ -316,9 +342,11 @@ export class Cpu{
     if (this.clockCount & 1){
       //奇数周期需要sleep 514个CPU时钟周期
       this.cyclesWait += 514;
+      this.cycleFrame+=514;
     }else{
       //偶数周期需要sleep 513个CPU时钟周期
       this.cyclesWait += 513;
+      this.cycleFrame+=513;
     }
   }
 

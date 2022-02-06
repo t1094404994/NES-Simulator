@@ -4,7 +4,7 @@ import {CartridgeReader} from './cartridge';
 import { Ppu } from './ppu';
 import { PpuBus } from './ppuBus';
 import { Controller } from './controller';
-import { Apu } from './apu';
+import { Apu ,SAMPLE_PER_FRAME} from './apu';
 import {RegionZoom} from './util/math';
 
 //主控接口
@@ -128,12 +128,16 @@ export class Main{
       this.ppu.step();
       this.ppu.step();
       this.cpu.step();
-      //FC渲染一帧画面，会产生四次音频数据
       if ((this.ppu.scanline === 65 || this.ppu.scanline === 130 || this.ppu.scanline === 195 || this.ppu.scanline === 260) && this.ppu.scanline !== laseScanline){
-        this.apu.step();
+        this.apu.step(this.cpubus.getCpuCycleFrame());
       }
     }
+    this.cpu.randerCall();
+    //补完
+    this.apu.finish();
     this.audioPlay();
+    //清除数据
+    this.apu.clearSqe();
     return 0;
   }
 
@@ -255,14 +259,11 @@ export class Main{
     }
   }
 
-  //测试自己创建数据，喂数据给 audio
+  //喂数据给 audio
   public audioPlay():void{
     const AudioContext = window.AudioContext;
     if(AudioContext){
-      const allFrame:number=this.apu.seqLen;
-      if(allFrame===0){
-        return;
-      }
+      const allFrame:number=SAMPLE_PER_FRAME;
       //创建音频上下文
       if(this.audio===undefined) this.audio=new AudioContext();
       const audioCtx:AudioContext=this.audio;

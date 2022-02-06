@@ -242,4 +242,9 @@ export class CpuBus{
     this.cpu.irqFlag=0;
     this.cpu.irqCounter=0;
   }
+
+  //获取该帧的cpu周期
+  public getCpuCycleFrame():number{
+    return this.cpu.cycleFrame;
+  }
 }
