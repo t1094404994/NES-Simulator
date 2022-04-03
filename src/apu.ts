@@ -42,9 +42,12 @@ const SAMPLE_PER_CLOCK=Math.floor(SAMPLE_PER_SEC / 240 + 1);
 //方波寄存器
 class SquareRegister{
   //4字节数据
-  private data:Array<number>;
+  private data:Array<number>
+  //使能
+  private statusWrite:boolean
   constructor(){
     this.data=[];
+    this.statusWrite=false;
     this.data.push(0);
     this.data.push(0);
     this.data.push(0);
@@ -54,7 +57,12 @@ class SquareRegister{
   public setData(index:number,value:number):void{
     this.data[index]=value;
   }
-
+  public setStatusWrite(status:boolean):void{
+    this.statusWrite=status;
+  }
+  public getStatusWrite():boolean{
+    return this.statusWrite;
+  }
   //获取方波的占空比信息byte0 bit6,bit7
   public getDuty():number{
     return this.data[0]>>6;
@@ -109,7 +117,9 @@ class SquareRegister{
 //三角波寄存器
 class TriangularRegister{
     private data:Array<number>
+    private statusWrite:boolean
     constructor(){
+      this.statusWrite=false;
       this.data=[];
       this.data.push(0);
       this.data.push(0);
@@ -119,17 +129,23 @@ class TriangularRegister{
     public setData(index:number,value:number):void{
       this.data[index]=value;
     }
+    public setStatusWrite(status:boolean):void{
+      this.statusWrite=status;
+    }
+    public getStatusWrite():boolean{
+      return this.statusWrite;
+    }
     //获取三角波是否持续播放
     public getHalt():boolean{
       return (this.data[0]>>7&1)===1;
     }
 
-    //获取线性计数器的初始值
+    //获取线性计数器的重载值
     public getlineCounter():number{
       return this.data[0]&0x7f;
     }
 
-    //获取分频数值
+    //获取周期数值
     public getPeriod():number{
       return this.data[2]|((this.data[3]&0x7)<<8);
     }
@@ -143,7 +159,9 @@ class TriangularRegister{
 //噪声寄存器
 class NoiseRegister{
   private data:Array<number>;
+  private statusWrite:boolean
   constructor(){
+    this.statusWrite=false;
     this.data=[];
     this.data.push(0);
     this.data.push(0);
@@ -153,6 +171,13 @@ class NoiseRegister{
 
   public setData(index:number,value:number):void{
     this.data[index]=value;
+  }
+
+  public setStatusWrite(status:boolean):void{
+    this.statusWrite=status;
+  }
+  public getStatusWrite():boolean{
+    return this.statusWrite;
   }
 
   //获取是否会一直播放
@@ -189,7 +214,9 @@ class NoiseRegister{
 //DPCM 波形采样寄存器
 class DPCMRegister{
   private data:Array<number>;
+  private statusWrite:boolean
   constructor(){
+    this.statusWrite=false;
     this.data=[];
     this.data.push(0);
     this.data.push(0);
@@ -200,6 +227,13 @@ class DPCMRegister{
   //写入数据
   public setData(index:number,value:number):void{
     this.data[index]=value;
+  }
+
+  public setStatusWrite(status:boolean):void{
+    this.statusWrite=status;
+  }
+  public getStatusWrite():boolean{
+    return this.statusWrite;
   }
 
   //播放完成之后是否产生IRQ中断
@@ -357,6 +391,7 @@ class SquareWave{
       break;
     case 2:
       this.regSquare.setData(2,value);
+      //周期是否有问题 TODO
       this.currPeriod=this.regSquare.getPeriod();
       break;
     case 3:
@@ -432,15 +467,13 @@ class SquareWave{
   }
 
   //播放时
-  public play(enable:boolean,start:number,end:number):void{
+  public play(start:number,end:number):void{
+    const enable=this.regSquare.getStatusWrite();
     for (let sampleLoc = start; sampleLoc <end; sampleLoc++){
       //计算这个采样点是否要静音
       let mute = false;
       if ((!enable) || (this.lenCounter === 0)){
         mute = true;
-        if(sampleLoc>=this.squareSeqDataView.byteLength){
-          console.log('这里');
-        }
         this.squareSeqDataView.setUint8(sampleLoc,0);
         this.cycle=0;
         this.index=0;
@@ -486,7 +519,7 @@ class TriangleWave{
   public linearCounter:number;
   //长度计数器
   public lenCounter:number;
-  //当前三角波频率
+  //当前三角波频率 不是整体周期
   public currPeriod:number;
   //播放三角波时需要的内容
   public triangleSeq:ArrayBuffer;
@@ -495,6 +528,8 @@ class TriangleWave{
   public cycle:number;
   //索引
   public index:number;
+  private incMask:number;
+  private playMask:number;
   constructor(){
     this.triangleReg=new TriangularRegister();
     this.triangleSeq=new ArrayBuffer(SAMPLE_PER_FRAME);
@@ -510,9 +545,11 @@ class TriangleWave{
     this.linearCounter=0;
     this.lenCounter=0;
     this.linearRestart=false;
-    this.currPeriod=1;
+    this.currPeriod=0;
     this.cycle=0;
     this.index=0;
+    this.incMask=0;
+    this.playMask=0;
   }
 
   public clearTriangleSeq():void{
@@ -534,6 +571,7 @@ class TriangleWave{
     case 2:
       this.triangleReg.setData(2,value);
       this.currPeriod = this.triangleReg.getPeriod();
+      this.setMask();
       break;
     case 3:
       this.triangleReg.setData(3,value);
@@ -542,15 +580,22 @@ class TriangleWave{
       if (enable) //在三角波启用的情况下，写入$4003会重置长度计数器
         this.lenCounter = this.triangleReg.getLencounter();
       //和方波不一致的地方是，三角波的波形不会因为寄存器的写入而重置
+      this.setMask();
       break;
     default:
       console.warn('向三角波寄存器写入不存在的Index');
       break;
     }
   }
+
+  public setMask():void{
+    this.incMask=(this.lenCounter&&this.linearCounter)?0xff:0;
+    this.playMask=this.triangleReg.getStatusWrite()?0xf:0;
+  }
+
   //触发长度寄存器的时钟
   public onLengthClock():void{
-    //
+    //没有暂停长度计数器/线性计数器
     if (!this.triangleReg.getHalt()&&this.lenCounter >= 1){
       this.lenCounter -= 1;
     }
@@ -563,16 +608,17 @@ class TriangleWave{
     }else if (this.linearCounter >= 1){
       this.linearCounter--;
     }
-    // 非halt的情况下，才会清掉restart标志位
+    // 暂停长度计数器/线性计数器的情况下，才会清掉restart标志位
     if (!this.triangleReg.getHalt())
       this.linearRestart = false;
   } 
 
-  public play(enable:boolean,start:number,end:number):void{
+  public play(start:number,end:number):void{
+    const enable=this.triangleReg.getStatusWrite();
     //采样周期 三角波是特例，以CPU周期为单位
     for(let sampleLoc=start;sampleLoc<end;sampleLoc++){
-      //计算这个采样点是否要静音. 长度计数器和线性计数器中，只要有一个为零，就静音
-      if ((!enable) || (this.lenCounter === 0) || (this.linearCounter === 0)){
+      //计算这个采样点是否要静音.
+      if (!enable||!this.currPeriod){
         this.triangleSeqDataView.setUint8(sampleLoc,0);
         this.cycle = 0;
         this.index=0;
@@ -581,11 +627,12 @@ class TriangleWave{
       this.cycle+=CPU_CYCLE_PER_SAMPLE;
       const count=Math.floor(this.cycle/this.currPeriod);
       this.cycle-=count*this.currPeriod;
-      this.index+=count;
+      this.index+=this.incMask&count;
+      //count可能大于1，所以取余
       if(this.index>=TriangleWaveMap.length){
         this.index=this.index%TriangleWaveMap.length;
       }
-      const seqVal:number=TriangleWaveMap[this.index];
+      const seqVal:number=TriangleWaveMap[this.index]&this.playMask;
       this.triangleSeqDataView.setUint8(sampleLoc,seqVal);
     }
   }
@@ -713,12 +760,12 @@ class Noise{
   }
 
   //播放
-  public play(enable:boolean,start:number,end:number):void{
+  public play(start:number,end:number):void{
+    const enable=this.noiseReg.getStatusWrite();
     for(let sample_loc=start;sample_loc<end;sample_loc++){
       //禁用或者已经输出完毕
       if (!enable||(this.lenCounter===0)){
         this.noiseSeqDataView.setUint8(sample_loc,0);
-        sample_loc++;
         this.cycle=0;
         continue;
       }
@@ -785,7 +832,6 @@ class DPCM{
     switch(index){
     case 0:
       this.dpcmReg.setData(0,value);
-      console.log('写入数据,是否循环:'+this.dpcmReg.getLoop());
       break;
     case 1:
       this.dpcmReg.setData(1,value);
@@ -844,11 +890,12 @@ class DPCM{
     this.bytesRemain = this.dpcmReg.getSampleLen();
   }
 
-  public play(enable:boolean,start:number,end:number):void{
+  public play(start:number,end:number):void{
     // //如果已经读取完成。
     if(!this.bytesRemain){
       return;
     }
+    const enable=this.dpcmReg.getStatusWrite();
     //FC中的PCM原始周期
     const fcPeriod=this.dpcmReg.getPeriod();
     //根据现在设置的采样率。算出新周期 A/T1=B/T2
@@ -856,7 +903,6 @@ class DPCM{
     for(let sample_loc=start;sample_loc<end;sample_loc++){
       if(!enable||!this.bytesRemain){
         this.dpcmSeqDataView.setInt8(sample_loc,0);
-        sample_loc++;
         this.cycle=0;
         continue;
       }
@@ -962,6 +1008,11 @@ export class Apu{
     }else if (index === 0x15){
       //写入APU Status
       this.statusReg.setData(value);
+      this.square0.regSquare.setStatusWrite(this.statusReg.getPulse0());
+      this.square1.regSquare.setStatusWrite(this.statusReg.getPulse1());
+      this.triangle.triangleReg.setStatusWrite(this.statusReg.getTriangle());
+      this.noise.noiseReg.setStatusWrite(this.statusReg.getNoise());
+      this.dpcm.dpcmReg.setStatusWrite(this.statusReg.getDMC());
       if (this.statusReg.getPulse0() === false)
         this.square0.lenCounter = 0;
       if (this.statusReg.getPulse1() === false)
@@ -1040,20 +1091,15 @@ export class Apu{
         this.onEnvelopeLinearClock();
         break;
       case 1:
-        // this.onLengthSweepClock();
-        // this.onEnvelopeLinearClock();
         this.onLengthSweepClock();
         break;
       case 2:
-        // this.onEnvelopeLinearClock();
         this.onEnvelopeLinearClock();
         break;
       case 3:
         this.onLengthSweepClock();
         break;
       case 4:
-        // this.onLengthSweepClock();
-        // this.onEnvelopeLinearClock();
         this.onEnvelopeLinearClock();
         break;
       default:
@@ -1062,22 +1108,15 @@ export class Apu{
     }else{
       switch (this.clockCnt % 4){
       case 0:
-        // this.onEnvelopeLinearClock();
         this.onFrameIrq();
         break;
       case 1:
-        // this.onLengthSweepClock();
-        // this.onEnvelopeLinearClock();
         this.onLengthSweepClock();
         break;
       case 2:
-        // this.onEnvelopeLinearClock();
         break;
       case 3:
         this.onLengthSweepClock();
-        // this.onLengthSweepClock();
-        // this.onEnvelopeLinearClock();
-        // this.onFrameIrq();
         break;
       default:
         break;
@@ -1105,12 +1144,17 @@ export class Apu{
       triangle=this.triangle.triangleSeqDataView.getInt8(t);
       noise=this.noise.noiseSeqDataView.getInt8(t);
       dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
+      // pulse0=0;
+      // pulse1=0;
+      // triangle=this.triangle.triangleSeqDataView.getInt8(t);
+      // noise=0;
+      // dpmc=0;
       pulseOut=95.88/((8128/(pulse0+pulse1))+100);
       tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
       output=pulseOut+tndOut;
       this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
       this.seqDataArr[t]=output;
-      // this.seqDataArr[t]=noise/64;
+      // this.seqDataArr[t]=triangle;
     }
   }
 
@@ -1129,11 +1173,11 @@ export class Apu{
       // console.log('这里');
       end=SAMPLE_PER_FRAME;
     }
-    this.square0.play(this.statusReg.getPulse0(),start,end);
-    this.square1.play(this.statusReg.getPulse1(),start,end);
-    this.triangle.play(this.statusReg.getTriangle(),start,end);
-    this.noise.play(this.statusReg.getNoise(),start,end);
-    this.dpcm.play(this.statusReg.getDMC(),start,end);
+    this.square0.play(start,end);
+    this.square1.play(start,end);
+    this.triangle.play(start,end);
+    this.noise.play(start,end);
+    this.dpcm.play(start,end);
   }
 
   //播放一个单位的音频

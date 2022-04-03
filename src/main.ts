@@ -151,7 +151,9 @@ export class Main{
         this.step();
       }else{
         //逻辑帧可以变得比默认帧率快
-        while(nowTime>this.nextLogicTime){
+        //可以调10帧
+        let maxStep=10;
+        while(nowTime>this.nextLogicTime&&maxStep--){
           this.nextLogicTime+=1000/this.logicFPS;
           this.step();
           //TODO
