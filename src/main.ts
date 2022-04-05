@@ -51,6 +51,9 @@ export class Main{
   private nextRenderTime:number;
   //是否暂停
   private isPause:boolean;
+
+  private allFarms=0;
+  private testaaa=0;
   constructor(){
     this.initNes();
     this.initConfig();
@@ -134,7 +137,9 @@ export class Main{
     }
     this.cpu.randerCall();
     //补完
+    this.allFarms++;
     this.apu.finish();
+    //有问题，并没有完美接上 所以会有爆音，频率越高，爆音越多
     this.audioPlay();
     //清除数据
     this.apu.clearSqe();
@@ -265,6 +270,7 @@ export class Main{
   public audioPlay():void{
     const AudioContext = window.AudioContext;
     if(AudioContext){
+      //问题应该在这里，频率对不上。感觉有间断点，所以三角波有很明显的噪音
       const allFrame:number=SAMPLE_PER_FRAME;
       //创建音频上下文
       if(this.audio===undefined) this.audio=new AudioContext();
@@ -276,10 +282,12 @@ export class Main{
       for(let i=0;i<channels;i++){
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         for(let i=0;i<allFrame;i++){
-          //[-1,1]
-          // buffer[i]=RegionZoom(this.apu.seqDataView.getInt8(i),-127,127,-1,1);
-          // buffer[i]=RegionZoom(this.apu.seqDataView.getInt16(i*2),-32767,32767,-1,1);
           buffer[i]=this.apu.seqDataArr[i];
+        }
+        //临时解决方案 加上淡入淡出后，抹平噪声 TODO
+        for(let i=0;i<100;i++){
+          buffer[i] = buffer[i]*i/100;
+          buffer[allFrame-i-1] = buffer[allFrame-i-1]*i/100;
         }
       }
       //创建音频资源节点
@@ -289,9 +297,9 @@ export class Main{
       this.audioSource.connect(audioCtx.destination);
       this.audioSource.start();
       this.audioSourceEnd=false;
-      // this.audioSource.addEventListener('ended',()=>{
-      //   this.audioSourceEnd=true;
-      // });
+      this.audioSource.addEventListener('ended',()=>{
+        this.audioSourceEnd=true;
+      });
     }
   }
 

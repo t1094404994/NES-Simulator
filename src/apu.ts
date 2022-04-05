@@ -545,7 +545,7 @@ class TriangleWave{
     this.linearCounter=0;
     this.lenCounter=0;
     this.linearRestart=false;
-    this.currPeriod=0;
+    this.currPeriod=1;
     this.cycle=0;
     this.index=0;
     this.incMask=0;
@@ -613,26 +613,29 @@ class TriangleWave{
       this.linearRestart = false;
   } 
 
+  //生成的数据没问题，可能是周期不同步或者什么原因
   public play(start:number,end:number):void{
     const enable=this.triangleReg.getStatusWrite();
     //采样周期 三角波是特例，以CPU周期为单位
     for(let sampleLoc=start;sampleLoc<end;sampleLoc++){
       //计算这个采样点是否要静音.
-      if (!enable||!this.currPeriod){
+      if (!enable||this.lenCounter===0||this.linearCounter===0){
         this.triangleSeqDataView.setUint8(sampleLoc,0);
-        this.cycle = 0;
-        this.index=0;
+        // this.cycle = 0;
+        // this.index=0;
         continue;
       }
       this.cycle+=CPU_CYCLE_PER_SAMPLE;
       const count=Math.floor(this.cycle/this.currPeriod);
       this.cycle-=count*this.currPeriod;
-      this.index+=this.incMask&count;
+      // this.index+=this.incMask&count;
+      this.index+=count;
       //count可能大于1，所以取余
       if(this.index>=TriangleWaveMap.length){
         this.index=this.index%TriangleWaveMap.length;
       }
-      const seqVal:number=TriangleWaveMap[this.index]&this.playMask;
+      // const seqVal:number=TriangleWaveMap[this.index]&this.playMask;
+      const seqVal:number=TriangleWaveMap[this.index];
       this.triangleSeqDataView.setUint8(sampleLoc,seqVal);
     }
   }
@@ -1138,23 +1141,18 @@ export class Apu{
     let triangle=0;
     let noise=0;
     let dpmc=0;
+    //产生噪音的原因在于每次音频衔接没有完美接上 TODO
     for (let t= 0; t < SAMPLE_PER_FRAME; t++){
       pulse0=this.square0.squareSeqDataView.getInt8(t);
       pulse1=this.square1.squareSeqDataView.getInt8(t);
       triangle=this.triangle.triangleSeqDataView.getInt8(t);
       noise=this.noise.noiseSeqDataView.getInt8(t);
       dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
-      // pulse0=0;
-      // pulse1=0;
-      // triangle=this.triangle.triangleSeqDataView.getInt8(t);
-      // noise=0;
-      // dpmc=0;
       pulseOut=95.88/((8128/(pulse0+pulse1))+100);
       tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
       output=pulseOut+tndOut;
       this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
       this.seqDataArr[t]=output;
-      // this.seqDataArr[t]=triangle;
     }
   }
 
@@ -1170,7 +1168,6 @@ export class Apu{
   public setAudio(start:number,end:number):void{
     if(start>=end) return;
     if(end>SAMPLE_PER_FRAME){
-      // console.log('这里');
       end=SAMPLE_PER_FRAME;
     }
     this.square0.play(start,end);
