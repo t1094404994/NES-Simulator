@@ -4,7 +4,7 @@ import {CartridgeReader} from './cartridge';
 import { Ppu } from './ppu';
 import { PpuBus } from './ppuBus';
 import { Controller } from './controller';
-import { Apu ,SAMPLE_PER_FRAME} from './apu';
+import { Apu ,SAMPLE_PER_FRAME,SAMPLE_PER_SEC} from './apu';
 import {RegionZoom} from './util/math';
 
 //主控接口
@@ -278,7 +278,7 @@ export class Main{
       //双声道
       const channels=2;
       //创建音频数据源
-      const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,44100);
+      const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
       for(let i=0;i<channels;i++){
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         for(let i=0;i<allFrame;i++){
