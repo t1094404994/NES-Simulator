@@ -53,6 +53,7 @@ export class Main{
   private isPause:boolean;
 
   private allFarms=0;
+  private audioarr:Array<number>=[];
   private testaaa=0;
   constructor(){
     this.initNes();
@@ -266,6 +267,7 @@ export class Main{
     }
   }
 
+
   //喂数据给 audio
   public audioPlay():void{
     const AudioContext = window.AudioContext;
@@ -281,14 +283,18 @@ export class Main{
       const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
       for(let i=0;i<channels;i++){
         const buffer:Float32Array=audiobuffer.getChannelData(i);
+        const curr=i;
         for(let i=0;i<allFrame;i++){
           buffer[i]=this.apu.seqDataArr[i];
+          if(curr===0){
+            this.audioarr.push(this.apu.seqDataArr[i]);
+          }
         }
         //临时解决方案 加上淡入淡出后，抹平噪声 TODO
-        for(let i=0;i<100;i++){
-          buffer[i] = buffer[i]*i/100;
-          buffer[allFrame-i-1] = buffer[allFrame-i-1]*i/100;
-        }
+        // for(let i=0;i<100;i++){
+        //   buffer[i] = buffer[i]*i/100;
+        //   buffer[allFrame-i-1] = buffer[allFrame-i-1]*i/100;
+        // }
       }
       //创建音频资源节点
       this.audioSource=audioCtx.createBufferSource();
@@ -300,6 +306,9 @@ export class Main{
       this.audioSource.addEventListener('ended',()=>{
         this.audioSourceEnd=true;
       });
+      if(this.allFarms%60===0){
+        this.audioarr.length=0; 
+      }
     }
   }
 

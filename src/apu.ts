@@ -1148,6 +1148,11 @@ export class Apu{
       triangle=this.triangle.triangleSeqDataView.getInt8(t);
       noise=this.noise.noiseSeqDataView.getInt8(t);
       dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
+      // pulse0=0;
+      pulse1=0;
+      triangle=0;
+      noise=0;
+      dpmc=0;
       pulseOut=95.88/((8128/(pulse0+pulse1))+100);
       tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
       output=pulseOut+tndOut;
