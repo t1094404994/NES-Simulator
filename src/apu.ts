@@ -23,8 +23,8 @@ const SquareWaveMap:Array<Array<boolean>> =[
 ];
 
 const TriangleWaveMap:Array<number> = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
   15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 ];
 
 const NoisePeriodMap:Array<number> = [4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068];
@@ -391,7 +391,6 @@ class SquareWave{
       break;
     case 2:
       this.regSquare.setData(2,value);
-      //周期是否有问题 TODO
       this.currPeriod=this.regSquare.getPeriod();
       break;
     case 3:
@@ -530,6 +529,9 @@ class TriangleWave{
   public index:number;
   private incMask:number;
   private playMask:number;
+
+  private nextValue:number
+  private lastPer:number
   constructor(){
     this.triangleReg=new TriangularRegister();
     this.triangleSeq=new ArrayBuffer(SAMPLE_PER_FRAME);
@@ -616,12 +618,13 @@ class TriangleWave{
   //生成的数据没问题，可能是周期不同步或者什么原因
   public play(start:number,end:number):void{
     const enable=this.triangleReg.getStatusWrite();
+    if(!enable) this.nextValue=null;
     //采样周期 三角波是特例，以CPU周期为单位
     for(let sampleLoc=start;sampleLoc<end;sampleLoc++){
       //计算这个采样点是否要静音.
       if (!enable||this.lenCounter===0||this.linearCounter===0){
         this.triangleSeqDataView.setUint8(sampleLoc,0);
-        // this.cycle = 0;
+        this.cycle = 0;
         // this.index=0;
         continue;
       }
@@ -637,6 +640,31 @@ class TriangleWave{
       // const seqVal:number=TriangleWaveMap[this.index]&this.playMask;
       const seqVal:number=TriangleWaveMap[this.index];
       this.triangleSeqDataView.setUint8(sampleLoc,seqVal);
+      //测试
+      if(sampleLoc===start){
+        if(this.nextValue!==undefined&&this.nextValue!==null){
+          if(this.triangleSeqDataView.getUint8(0)!==this.nextValue){
+            console.warn('期待值是'+this.nextValue+' 实际值是'+this.triangleSeqDataView.getUint8(0));
+            this.nextValue=null;
+          }
+        }
+      }
+      if(sampleLoc===end-1){
+        let testCycle=this.cycle;
+        let testindex=this.index;
+        testCycle+=CPU_CYCLE_PER_SAMPLE;
+        const count=Math.floor(testCycle/this.currPeriod);
+        testCycle-=count*this.currPeriod;
+        testindex+=count;
+        //count可能大于1，所以取余
+        if(testindex>=TriangleWaveMap.length){
+          testindex=testindex%TriangleWaveMap.length;
+        }
+        // const seqVal:number=TriangleWaveMap[this.index]&this.playMask;
+        const testseqVal:number=TriangleWaveMap[testindex];
+        this.nextValue=testseqVal;
+        this.lastPer=this.currPeriod;
+      }
     }
   }
 }
@@ -1148,9 +1176,9 @@ export class Apu{
       triangle=this.triangle.triangleSeqDataView.getInt8(t);
       noise=this.noise.noiseSeqDataView.getInt8(t);
       dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
-      // pulse0=0;
+      pulse0=0;
       pulse1=0;
-      triangle=0;
+      // triangle=0;
       noise=0;
       dpmc=0;
       pulseOut=95.88/((8128/(pulse0+pulse1))+100);

@@ -34,7 +34,7 @@ export class Main{
   private audio:AudioContext;
 
   private audioSource:AudioBufferSourceNode;
-  private audioSourceEnd:boolean;
+  private audioBuffer:AudioBuffer;
 
   //渲染数据
   private imageData:ImageData;
@@ -55,6 +55,8 @@ export class Main{
   private allFarms=0;
   private audioarr:Array<number>=[];
   private testaaa=0;
+  private testindex=0;
+  private testaudioBuffer:AudioBuffer
   constructor(){
     this.initNes();
     this.initConfig();
@@ -98,7 +100,6 @@ export class Main{
     this.nextLogicTime=0;
     this.nextRenderTime=0;
     this.isPause=true;
-    this.audioSourceEnd=true;
   }
 
   //设置卡带数据
@@ -140,7 +141,6 @@ export class Main{
     //补完
     this.allFarms++;
     this.apu.finish();
-    //有问题，并没有完美接上 所以会有爆音，频率越高，爆音越多
     this.audioPlay();
     //清除数据
     this.apu.clearSqe();
@@ -183,6 +183,67 @@ export class Main{
   public start():void{
     this.isPause=false;
     this.enterFrame();
+    // this.testplay();
+    // setInterval(()=>{
+    //   this.testplay();
+    // },10);
+  }
+
+  private testplay(){
+    //问题应该在这里，频率对不上。感觉有间断点，所以三角波有很明显的噪音
+    // 1.因为音频不是从0开始，所以第一下会有爆音
+    // 2.因为音频不是真正的连续播放，所以才会有1的情况
+
+    //备选方案 初始化一个足够长时间的BUffer 实际不对
+    const allFrame=this.audioarr.length;
+    //创建音频上下文
+    if(this.audio===undefined) this.audio=new AudioContext();
+    const audioCtx:AudioContext=this.audio;
+    //双声道
+    const channels=1;
+    //创建音频数据源
+    if(!this.testaudioBuffer){
+      this.testaudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
+    }
+    const audiobuffer:AudioBuffer=this.testaudioBuffer;
+    const TriangleWaveMap:Array<number> = [
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+      15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+    ];
+    const step=7;
+    let testbuff;
+    this.testindex=0;
+    // for(let i=0;i<channels;i++){
+    //   const buffer:Float32Array=audiobuffer.getChannelData(i);
+    //   testbuff=buffer;
+    //   for(let i=0;i<allFrame;i++){
+    //     if(i&&i%step===0){
+    //       this.testindex++;
+    //       if(this.testindex===TriangleWaveMap.length){
+    //         this.testindex=0;
+    //       }
+    //     }
+    //     buffer[i]=TriangleWaveMap[this.testindex]/10;
+    //   }
+    //   //临时解决方案 加上淡入淡出后，抹平噪声 TODO
+    //   // for(let i=0;i<100;i++){
+    //   //   buffer[i] = buffer[i]*i/100;
+    //   //   buffer[allFrame-i-1] = buffer[allFrame-i-1]*i/100;
+    //   // }
+    // }
+    for(let i=0;i<channels;i++){
+      const buffer:Float32Array=audiobuffer.getChannelData(i);
+      for(let i=0;i<allFrame;i++){
+        buffer[i]=this.audioarr[i];
+      }
+    }
+    //创建音频资源节点
+    this.audioSource=audioCtx.createBufferSource();
+    this.audioSource.buffer=audiobuffer;
+    this.audioSource.loop=true;
+    //把节点连接到声音环境
+    this.audioSource.connect(audioCtx.destination);
+    this.audioSource.start();
   }
 
   //暂停
@@ -267,9 +328,12 @@ export class Main{
     }
   }
 
-
   //喂数据给 audio
   public audioPlay():void{
+    //测试
+    if(this.allFarms>600){
+      return;
+    }
     const AudioContext = window.AudioContext;
     if(AudioContext){
       //问题应该在这里，频率对不上。感觉有间断点，所以三角波有很明显的噪音
@@ -280,7 +344,12 @@ export class Main{
       //双声道
       const channels=2;
       //创建音频数据源
-      const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
+      if(!this.audioBuffer){
+        this.audioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
+      }
+      const audiobuffer:AudioBuffer=this.audioBuffer;
+      // const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
+      let allzeor=true;
       for(let i=0;i<channels;i++){
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         const curr=i;
@@ -289,25 +358,36 @@ export class Main{
           if(curr===0){
             this.audioarr.push(this.apu.seqDataArr[i]);
           }
+          if(buffer[i]!==0){
+            allzeor=false;
+          }
         }
         //临时解决方案 加上淡入淡出后，抹平噪声 TODO
-        // for(let i=0;i<100;i++){
-        //   buffer[i] = buffer[i]*i/100;
-        //   buffer[allFrame-i-1] = buffer[allFrame-i-1]*i/100;
+        // for(let i=0;i<10;i++){
+        //   buffer[i] = buffer[i]*i/10;
+        //   buffer[allFrame-i-1] = buffer[allFrame-i-1]*i/10;
         // }
       }
       //创建音频资源节点
-      this.audioSource=audioCtx.createBufferSource();
-      this.audioSource.buffer=audiobuffer;
-      //把节点连接到声音环境
-      this.audioSource.connect(audioCtx.destination);
-      this.audioSource.start();
-      this.audioSourceEnd=false;
-      this.audioSource.addEventListener('ended',()=>{
-        this.audioSourceEnd=true;
-      });
-      if(this.allFarms%60===0){
-        this.audioarr.length=0; 
+      if(!this.audioSource){
+        this.audioSource=audioCtx.createBufferSource();
+        this.audioSource.buffer=audiobuffer;
+        this.audioSource.loop=true;
+        //把节点连接到声音环境
+        this.audioSource.connect(audioCtx.destination);
+        this.audioSource.start();
+      }
+      // this.audioSource=audioCtx.createBufferSource();
+      // this.audioSource.buffer=audiobuffer;
+      // //把节点连接到声音环境
+      // this.audioSource.connect(audioCtx.destination);
+      // this.audioSource.start();
+      if(this.allFarms&&this.allFarms===600){
+        this.audioSource.loop=false;
+        this.testplay();
+        // setInterval(()=>{
+        //   this.testplay();
+        // },10);
       }
     }
   }
