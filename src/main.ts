@@ -139,9 +139,13 @@ export class Main{
     }
     this.cpu.randerCall();
     //补完
-    this.allFarms++;
     this.apu.finish();
-    this.audioPlay();
+    this.setAudioData(this.allFarms*SAMPLE_PER_FRAME,(this.allFarms+1)*(SAMPLE_PER_FRAME));
+    if(this.allFarms===60){
+      this.allFarms=0;
+    }
+    this.allFarms++;
+    // this.audioPlay();
     //清除数据
     this.apu.clearSqe();
     return 0;
@@ -182,6 +186,8 @@ export class Main{
   //开始运行
   public start():void{
     this.isPause=false;
+    this.initAudio(SAMPLE_PER_FRAME*60,SAMPLE_PER_SEC);
+    this.startAudio();
     this.enterFrame();
     // this.testplay();
     // setInterval(()=>{
@@ -328,15 +334,58 @@ export class Main{
     }
   }
 
+
+  //初始化音频
+  private initAudio(perFrame:number,perSample:number):void{
+    const AudioContext = window.AudioContext;
+    if(AudioContext){
+      const allFrame:number=perFrame;
+      //创建音频上下文
+      if(this.audio===undefined) this.audio=new AudioContext();
+      const audioCtx:AudioContext=this.audio;
+      //双声道
+      const channels=2;
+      //创建音频数据源
+      if(!this.audioBuffer){
+        this.audioBuffer=audioCtx.createBuffer(channels,allFrame,perSample);
+      }
+    }
+  }
+
+  //设置该帧的数据
+  private setAudioData(start:number,end:number):void{
+    //双声道
+    const channels=2;
+    const audiobuffer:AudioBuffer=this.audioBuffer;
+    // const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
+    for(let i=0;i<channels;i++){
+      const buffer:Float32Array=audiobuffer.getChannelData(i);
+      for(let i=start,n=0;i<end;i++,n++){
+        buffer[i]=this.apu.seqDataArr[n];
+      }
+    }
+  }
+
+  //开始
+  private startAudio():void{
+    const audioCtx:AudioContext=this.audio;
+    this.audioSource=audioCtx.createBufferSource();
+    this.audioSource.buffer=this.audioBuffer;
+    this.audioSource.loop=true;
+    //把节点连接到声音环境
+    this.audioSource.connect(audioCtx.destination);
+    this.audioSource.start();
+  }
+
   //喂数据给 audio
   public audioPlay():void{
     //测试
-    if(this.allFarms>600){
-      return;
-    }
+    // if(this.allFarms>600){
+    //   return;
+    // }
+    // if(this.allFarms===60){}
     const AudioContext = window.AudioContext;
     if(AudioContext){
-      //问题应该在这里，频率对不上。感觉有间断点，所以三角波有很明显的噪音
       const allFrame:number=SAMPLE_PER_FRAME;
       //创建音频上下文
       if(this.audio===undefined) this.audio=new AudioContext();
@@ -349,7 +398,8 @@ export class Main{
       }
       const audiobuffer:AudioBuffer=this.audioBuffer;
       // const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
-      let allzeor=true;
+      const start=this.allFarms*60;
+      const end=start+60;
       for(let i=0;i<channels;i++){
         const buffer:Float32Array=audiobuffer.getChannelData(i);
         const curr=i;
@@ -358,15 +408,7 @@ export class Main{
           if(curr===0){
             this.audioarr.push(this.apu.seqDataArr[i]);
           }
-          if(buffer[i]!==0){
-            allzeor=false;
-          }
         }
-        //临时解决方案 加上淡入淡出后，抹平噪声 TODO
-        // for(let i=0;i<10;i++){
-        //   buffer[i] = buffer[i]*i/10;
-        //   buffer[allFrame-i-1] = buffer[allFrame-i-1]*i/10;
-        // }
       }
       //创建音频资源节点
       if(!this.audioSource){
@@ -382,13 +424,13 @@ export class Main{
       // //把节点连接到声音环境
       // this.audioSource.connect(audioCtx.destination);
       // this.audioSource.start();
-      if(this.allFarms&&this.allFarms===600){
-        this.audioSource.loop=false;
-        this.testplay();
-        // setInterval(()=>{
-        //   this.testplay();
-        // },10);
-      }
+      // if(this.allFarms&&this.allFarms===600){
+      //   this.audioSource.loop=false;
+      //   this.testplay();
+      //   // setInterval(()=>{
+      //   //   this.testplay();
+      //   // },10);
+      // }
     }
   }
 
