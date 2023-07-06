@@ -27,5 +27,15 @@
     "build-vite": "vite build",
     "preview-vite": "vite preview",
     "lint": "eslint src"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/t1094404994/NES-Simulator.git"
+  },
+  "author": "txz",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/t1094404994/NES-Simulator/issues"
+  },
+  "homepage": "https://github.com/t1094404994/NES-Simulator#readme"
 }
