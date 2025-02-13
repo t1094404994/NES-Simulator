@@ -54,9 +54,6 @@ export class Main{
 
   private allFarms=0;
   private audioarr:Array<number>=[];
-  private testaaa=0;
-  private testindex=0;
-  private testaudioBuffer:AudioBuffer
   constructor(){
     this.initNes();
     this.initConfig();
@@ -145,7 +142,7 @@ export class Main{
       this.allFarms=0;
     }
     this.allFarms++;
-    // this.audioPlay();
+    this.audioPlay();
     //清除数据
     this.apu.clearSqe();
     return 0;
@@ -189,67 +186,6 @@ export class Main{
     this.initAudio(SAMPLE_PER_FRAME*60,SAMPLE_PER_SEC);
     this.startAudio();
     this.enterFrame();
-    // this.testplay();
-    // setInterval(()=>{
-    //   this.testplay();
-    // },10);
-  }
-
-  private testplay(){
-    //问题应该在这里，频率对不上。感觉有间断点，所以三角波有很明显的噪音
-    // 1.因为音频不是从0开始，所以第一下会有爆音
-    // 2.因为音频不是真正的连续播放，所以才会有1的情况
-
-    //备选方案 初始化一个足够长时间的BUffer 实际不对
-    const allFrame=this.audioarr.length;
-    //创建音频上下文
-    if(this.audio===undefined) this.audio=new AudioContext();
-    const audioCtx:AudioContext=this.audio;
-    //双声道
-    const channels=1;
-    //创建音频数据源
-    if(!this.testaudioBuffer){
-      this.testaudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
-    }
-    const audiobuffer:AudioBuffer=this.testaudioBuffer;
-    const TriangleWaveMap:Array<number> = [
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-      15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-    ];
-    const step=7;
-    let testbuff;
-    this.testindex=0;
-    // for(let i=0;i<channels;i++){
-    //   const buffer:Float32Array=audiobuffer.getChannelData(i);
-    //   testbuff=buffer;
-    //   for(let i=0;i<allFrame;i++){
-    //     if(i&&i%step===0){
-    //       this.testindex++;
-    //       if(this.testindex===TriangleWaveMap.length){
-    //         this.testindex=0;
-    //       }
-    //     }
-    //     buffer[i]=TriangleWaveMap[this.testindex]/10;
-    //   }
-    //   //临时解决方案 加上淡入淡出后，抹平噪声 TODO
-    //   // for(let i=0;i<100;i++){
-    //   //   buffer[i] = buffer[i]*i/100;
-    //   //   buffer[allFrame-i-1] = buffer[allFrame-i-1]*i/100;
-    //   // }
-    // }
-    for(let i=0;i<channels;i++){
-      const buffer:Float32Array=audiobuffer.getChannelData(i);
-      for(let i=0;i<allFrame;i++){
-        buffer[i]=this.audioarr[i];
-      }
-    }
-    //创建音频资源节点
-    this.audioSource=audioCtx.createBufferSource();
-    this.audioSource.buffer=audiobuffer;
-    this.audioSource.loop=true;
-    //把节点连接到声音环境
-    this.audioSource.connect(audioCtx.destination);
-    this.audioSource.start();
   }
 
   //暂停
