@@ -1,5 +1,5 @@
-const path = require('path')
-const HtmlWebpackPlugin = require('html-webpack-plugin')
+const path = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
   entry: {
@@ -38,6 +38,10 @@ module.exports = {
   },
   resolve: {
     //允许的导入文件类型
-    extensions: ['.ts', '.tsx', '.js']
-  },
-}
+    extensions: ['.ts', '.tsx', '.js'],
+    //TODO 找不到fs,暂时的解决办法
+    fallback: {
+      fs: false
+    }
+  }
+};
