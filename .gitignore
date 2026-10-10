@@ -1,4 +1,6 @@
 node_modules
 dist
-.vscode
 .pnpm-store
+.vscode/*
+!.vscode/settings.json
+.DS_Store

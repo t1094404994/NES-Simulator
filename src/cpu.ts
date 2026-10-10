@@ -3,8 +3,8 @@
 import { CpuBus } from './cpuBus';
 //CPU频率
 export const CPU_CYCLE_PER_SEC=1789773;
-//一帧画面的CPU周期
-export const CPU_CYCLE_PER_FRAME=Math.ceil(CPU_CYCLE_PER_SEC/60);
+// NTSC 一帧约 29780.5 CPU 周期；取整后由 PPU 帧作为主时钟，不再用无 PPU 的 CPU 追赶补齐
+export const CPU_CYCLE_PER_FRAME=29781;
 //状态寄存器
 class StatusFlag{
   private data:number;
@@ -175,6 +175,8 @@ export class Cpu{
   public irqFlag:number;
   //IRQ进程中
   public irqInProcess:number;
+  // NMI 挂起：PPU 置位后，在指令边界响应
+  public nmiPending:boolean;
   //测试
   private testCycles=0;
   //CPU循环计数
@@ -195,6 +197,7 @@ export class Cpu{
     this.irqCounter=0;
     this.irqFlag=0;
     this.irqInProcess=0;
+    this.nmiPending=false;
     this.setFrame(60);
     this.initTable();
   }
@@ -212,7 +215,10 @@ export class Cpu{
     //设置中断
     this.regSf.setI(true);
     this.regSf.setU(true);
-    //console.log('重置/初始化CPU');
+    this.nmiPending=false;
+    this.irqCounter=0;
+    this.irqFlag=0;
+    this.irqInProcess=0;
   }
 
   public setRegSfIrq(value:boolean):void{
@@ -252,13 +258,22 @@ export class Cpu{
   //CPU主循环
   public step():void{
     if(this.cyclesWait===0){
-      //判断IRQ
+      // NMI 优先于 IRQ，在指令边界采样
+      if(this.nmiPending){
+        this.nmiPending=false;
+        this.nmi();
+        this.cyclesWait--;
+        this.clockCount++;
+        return;
+      }
       // IRQ 处理
       if(this.irqCounter) {
         --this.irqCounter;
         if(this.irqCounter === 0) {
           this.irqInProcess =1;
           this.irq();
+          this.cyclesWait--;
+          this.clockCount++;
           return;
         }
       }
@@ -268,39 +283,28 @@ export class Cpu{
       //根据操作码对应的寻址方式，找到操作数的地址
       const instr:Instruction=this.opcodeMapTable[this.opcode];
       const modeCycles:number=this.impAddressMode(instr.addressMode);
-      //console.log('当前地址:'+this.address.toString(16));
       //执行操作码
       const instrCycles:number=this.impInstructions(instr.name);
       //计算这条指令花费的周期
       this.cyclesWait=instr.cycleCnt;
-      //console.log('当前pc寄存器:'+this.regPc.toString(16));
       //跨页的话周期要多加
       if(instrCycles < 0) this.cyclesWait += (-instrCycles);
       else this.cyclesWait += (instrCycles & modeCycles);
       this.regSf.setU(true);
       this.testCycles+=this.cyclesWait;
       this.cycleFrame+=this.cyclesWait;
-      //27039270  27039470
-      // if(){
-      //   console.log('opcode:'+this.opcode+'/'+instr.name+'    address:'+this.address+'regPC:'+this.regPc+'周期:'+this.testCycles);
-      //   //console.log('状态寄存器:'+this.regSf.getData()+'8194: '+this.cpuBus.getValue(8194));
-      // }
-      // if(this.testCycles>=59500){
-      //   console.log('fdsdfs');
-      // }
     }
     this.cyclesWait--;
     this.clockCount++;
   }
 
-  //一帧渲染完成后的回调
+  //一帧渲染完成后的回调：以 PPU 帧为主时钟，不再无 PPU 追赶 CPU
   public randerCall():void{
-    //如果没有跑满，则继续执行
-    while(this.cycleFrame<CPU_CYCLE_PER_FRAME){
-      this.step();
-    }
-    this.cycleFrame-=CPU_CYCLE_PER_FRAME;
-    // this.cycleFrame=0;
+    this.cycleFrame=0;
+  }
+
+  public requestNmi():void{
+    this.nmiPending=true;
   }
 
   //CPU执行可屏蔽中断

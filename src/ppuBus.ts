@@ -1,14 +1,9 @@
 //PPU总线
 
 import { CartridgeReader } from './cartridge';
+import { NametableType } from './nametableType';
 
-//名称表类型
-export enum NametableType{
-  HORIZONTAL,
-  VIRTICAL,
-  ONESCREEN_LOWER=9,
-  ONESCREEN_HIGHER=10,
-}
+export { NametableType };
 
 //精灵数据接口
 export interface OAMSprite{
@@ -53,12 +48,10 @@ export class Oamram{
     const bit3:number=this.dataView.getUint8(offset+2);
     sprite.paletteDx=bit3&0x3;
     sprite.behindBackground=(bit3&(1<<5))!==0;
-    //x轴翻转：当O6等于0时翻转，等于1时不翻转
-    if(bit3&(1<<6)) sprite.flipX=false;
-    else sprite.flipX=true;
-    //y轴翻转：当O7等于1时翻转，等于0时不翻转
-    if(bit3&(1<<7)) sprite.flipY=true;
-    else sprite.flipY=false;
+    // Nesdev: OAM byte2 bit6 = horizontal flip when set
+    sprite.flipX=(bit3&(1<<6))!==0;
+    // Nesdev: OAM byte2 bit7 = vertical flip when set
+    sprite.flipY=(bit3&(1<<7))!==0;
     sprite.locX=this.dataView.getUint8(offset+3);
     return sprite;
   }
@@ -73,12 +66,8 @@ export class Oamram{
     const bit3:number=this.dataView.getUint8(offset+2);
     sprite.paletteDx=bit3&0x3;
     sprite.behindBackground=(bit3&(1<<5))!==0;
-    //x轴翻转：当O6等于0时翻转，等于1时不翻转
-    if(bit3&(1<<6)) sprite.flipX=false;
-    else sprite.flipX=true;
-    //y轴翻转：当O7等于1时翻转，等于0时不翻转
-    if(bit3&(1<<7)) sprite.flipY=true;
-    else sprite.flipY=false;
+    sprite.flipX=(bit3&(1<<6))!==0;
+    sprite.flipY=(bit3&(1<<7))!==0;
     sprite.locX=this.dataView.getUint8(offset+3);
     return sprite;
   }
@@ -91,18 +80,20 @@ interface NameTableInfor{
 
 //PPU总线
 export class PpuBus{
-  //1kb 32x32名称表1
+  //1kb 32x32名称表（四屏时用到 1–4）
   private nameTable1:ArrayBuffer;
-  
   private nameTable1DateView:DataView;
-  //1kb 32x32名称表2
   private nameTable2:ArrayBuffer;
-  
   private nameTable2DateView:DataView;
+  private nameTable3:ArrayBuffer;
+  private nameTable3DateView:DataView;
+  private nameTable4:ArrayBuffer;
+  private nameTable4DateView:DataView;
   //32字节调色板
   private palette:ArrayBuffer;
-  
   private paletteDataView:DataView;
+  // MMC3 A12 边沿检测
+  private lastA12:number;
 
   //卡带
   private cartridgeReader:CartridgeReader;
@@ -114,10 +105,32 @@ export class PpuBus{
   public reset():void{
     this.nameTable1=new ArrayBuffer(1024);
     this.nameTable2=new ArrayBuffer(1024);
+    this.nameTable3=new ArrayBuffer(1024);
+    this.nameTable4=new ArrayBuffer(1024);
     this.nameTable1DateView=new DataView(this.nameTable1);
     this.nameTable2DateView=new DataView(this.nameTable2);
+    this.nameTable3DateView=new DataView(this.nameTable3);
+    this.nameTable4DateView=new DataView(this.nameTable4);
     this.palette=new ArrayBuffer(32);
     this.paletteDataView=new DataView(this.palette);
+    this.lastA12=0;
+  }
+
+  private updateA12(busAddress:number):void{
+    const a12=(busAddress>>12)&1;
+    if(a12===1&&this.lastA12===0){
+      this.cartridgeReader?.mapper?.notifyA12Rise?.();
+    }
+    this.lastA12=a12;
+  }
+
+  private nametableView(id:number):DataView{
+    switch(id){
+    case 2: return this.nameTable2DateView;
+    case 3: return this.nameTable3DateView;
+    case 4: return this.nameTable4DateView;
+    default: return this.nameTable1DateView;
+    }
   }
 
   //设置卡带
@@ -126,6 +139,7 @@ export class PpuBus{
   }
   //从PPU总线获取数据
   public getValue(busAddress:number):number{
+    this.updateA12(busAddress);
     //获取图案表数据
     if(busAddress>=0&&busAddress<0x2000){
       return this.cartridgeReader.mapper.ppuReadPt(busAddress);
@@ -133,10 +147,7 @@ export class PpuBus{
     //获取名称表数据
     else if(busAddress>=0x2000&&busAddress<0x3f00){
       const infor:NameTableInfor=this.getNametableAdd(busAddress);
-      let table:DataView;
-      if(infor.nameTable===1) table=this.nameTable1DateView;
-      else table=this.nameTable2DateView;
-      return table.getUint8(infor.address);
+      return this.nametableView(infor.nameTable).getUint8(infor.address);
     }
     else if(busAddress>=0x3f00&&busAddress<0x4000){
       return this.paletteDataView.getUint8(busAddress&0x1f);
@@ -149,6 +160,7 @@ export class PpuBus{
 
   //从PPU总线设置数据
   public setValue(busAddress:number,value:number):void{
+    this.updateA12(busAddress);
     //尝试写入数据到卡带
     if(busAddress<=0x1fff){
       this.cartridgeReader.mapper.ppuWritePt(busAddress,value);
@@ -156,10 +168,7 @@ export class PpuBus{
     //写入数据到名称表
     else if(busAddress>=0x2000&&busAddress<0x3f00){
       const infor:NameTableInfor=this.getNametableAdd(busAddress);
-      let table:DataView;
-      if(infor.nameTable===1) table=this.nameTable1DateView;
-      else table=this.nameTable2DateView;
-      table.setUint8(infor.address,value);
+      this.nametableView(infor.nameTable).setUint8(infor.address,value);
     }
     //写入数据到调色板
     else if(busAddress>=0x3f00&&busAddress<0x4000){
@@ -200,7 +209,11 @@ export class PpuBus{
     //只有名称表2
     case NametableType.ONESCREEN_HIGHER:
       tableInfor.nameTable=2;
-      break;  
+      break;
+    // 四屏：四个独立 1KB 名称表
+    case NametableType.FOUR_SCREEN:
+      tableInfor.nameTable=1+((busAddress>>10)&3);
+      break;
     default:
       tableInfor.nameTable=1;
       console.warn('没有找到名称表的镜像方式');

@@ -1,4 +1,4 @@
-import {Mapper,CartridgeReader} from '../cartridge';
+import type {Mapper,CartridgeReader} from '../cartridge';
 export class Mapper2 implements Mapper{
   //TODO如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 卡带上为什么会没有图案表？
   private chRamPtr:ArrayBuffer;
@@ -56,8 +56,10 @@ export class Mapper2 implements Mapper{
     }
   }
   //CPU写入程序数据
-  public cpuWriteRpg(busAddress:number,value:number):void{
-    this.prgSelect16kbLo = value & 0x0f;
+  public cpuWriteRpg(_busAddress:number,value:number):void{
+    // bank 掩码按 16KB PRG 块数（romNum）
+    const mask=Math.max(1,this.cartridge.romNum)-1;
+    this.prgSelect16kbLo = value & mask;
   }
   //CPU读取的扩展ROM
   public cpuReadAddRom(busAddress:number):number{

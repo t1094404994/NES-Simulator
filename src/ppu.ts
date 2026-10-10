@@ -452,20 +452,10 @@ export class Ppu{
     return dataRet;
   }
 
-  //从DMA拷贝数据到精灵RAM
+  //从DMA拷贝数据到精灵RAM（从 OAMADDR 起环形写入 256 字节）
   public oamDma(pageView:DataView):void{
-    //先拷贝到$2003之后的地址，再拷贝到0-$2003的地址 TODO
-    const len:number=256-this.oamAddress;
-    this.copyArrayBuffer(pageView,this.oamAddress,len);
-    if(this.oamAddress){
-      this.copyArrayBuffer(pageView,len,this.oamAddress);
-    }
-  }
-
-  //拷贝ArrayBuffer数据
-  public copyArrayBuffer(from:DataView,start:number,len:number):void{
-    for(let i=0;i<len;i++){
-      this.oamram.setData(start+i,from.getUint8(i));
+    for(let i=0;i<256;i++){
+      this.oamram.setData((this.oamAddress+i)&0xff,pageView.getUint8(i));
     }
   }
 
@@ -572,8 +562,9 @@ export class Ppu{
                   patterntableAddr = oamSprite.patterntableAddress + 16 + (yInTile & 0x7);
                 else
                   patterntableAddr = oamSprite.patterntableAddress + (yInTile & 0x7);
-                const lowBit:number= ((this.ppuBus.getValue(patterntableAddr) >> (xInTile)) & 1);
-                const hiBit:number= ((this.ppuBus.getValue(patterntableAddr + 8) >> (xInTile)) & 1);
+                // 与背景一致：bit7 = 最左像素
+                const lowBit:number= ((this.ppuBus.getValue(patterntableAddr) >> (7 - xInTile)) & 1);
+                const hiBit:number= ((this.ppuBus.getValue(patterntableAddr + 8) >> (7 - xInTile)) & 1);
                 sprcolorInPalette =(hiBit << 1) + lowBit;
               }else{
                 //渲染8*8的精灵
@@ -593,8 +584,8 @@ export class Ppu{
                   patterntableAddress += 0x1000;
                   patterntableAddress&0xffff;
                 }
-                const lowBit:number= ((this.ppuBus.getValue(patterntableAddress) >> (xInTile)) & 1);
-                const hiBit:number= ((this.ppuBus.getValue(patterntableAddress + 8) >> (xInTile)) & 1);
+                const lowBit:number= ((this.ppuBus.getValue(patterntableAddress) >> (7 - xInTile)) & 1);
+                const hiBit:number= ((this.ppuBus.getValue(patterntableAddress + 8) >> (7 - xInTile)) & 1);
                 sprcolorInPalette =(hiBit << 1) + lowBit;
               }
               //根据颜色代码来获取颜色。如果颜色代码为0的话，则这个像素不使用这个精灵的颜色，否则使用这个精灵的颜色
@@ -681,10 +672,10 @@ export class Ppu{
     if (this.scanline >= 241){
       if (this.scanline === 241 && this.cycle === 1)
       {
-        //进入垂直消隐阶段时，调用CPU的NMI中断
+        //进入垂直消隐：挂起 NMI，由 CPU 在指令边界采样
         this.regStatus.setVblank(true);
         if (this.regCtrl.getNmi())
-          this.cpu.nmi();
+          this.cpu.requestNmi();
       }
     }
     //scanline和cycle递增

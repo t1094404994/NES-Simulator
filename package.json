@@ -20,12 +20,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke:mappers": "npx --yes tsx scripts/smoke-mappers.ts"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@typescript/typescript6": "^6.0.2",
     "typescript": "^7.0.2",
+    "typescript-editor": "npm:typescript@6.0.3",
     "vite": "^8.3.4",
     "vite-plugin-dts": "^5.1.2"
   },

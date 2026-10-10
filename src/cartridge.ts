@@ -1,9 +1,15 @@
 import { Mapper0 } from './mapper/mapper0';
 import { Mapper1 } from './mapper/mapper1';
 import { Mapper2 } from './mapper/mapper2';
+import { Mapper3 } from './mapper/mapper3';
+import { Mapper4 } from './mapper/mapper4';
+import { Mapper7 } from './mapper/mapper7';
+import { NametableType } from './nametableType';
 
 type ReadData=(address:number)=>number;
 type WriteData=(address:number,value:number)=>void;
+
+type MapperCtor=new (cartridge:CartridgeReader,hasVrom:boolean)=>Mapper;
 
 //MAPPER接口
 export interface Mapper{
@@ -20,7 +26,21 @@ export interface Mapper{
   //增加的RAM
   addRam?:ArrayBuffer,
   addRamDataView?:DataView,
+  /** PPU A12 上升沿（MMC3 IRQ）；可选 */
+  notifyA12Rise?:()=>void,
+  /** 绑定 IRQ 回调 */
+  bindIrq?:(tryIrq:()=>void)=>void,
+  onFrameEnd?:()=>void,
 }
+
+const MAPPER_FACTORIES:Record<number,MapperCtor>={
+  0:Mapper0,
+  1:Mapper1,
+  2:Mapper2,
+  3:Mapper3,
+  4:Mapper4,
+  7:Mapper7,
+};
 
 //卡带数据读取解析保存
 export class CartridgeReader{
@@ -41,11 +61,16 @@ export class CartridgeReader{
   //图形数据在卡带中的起始位置
   public vromOffset:number;
 
-  //卡带是否有多的ROM
+  // iNES battery-backed PRG RAM 标志（bit1）；实际 WRAM 以 mapper.addRam 为准
   public hasAddedRom:boolean;
   constructor(){
     this.programOffset=16;
     this.hasAddedRom=false;
+  }
+
+  /** 卡带是否提供 $6000–$7FFF WRAM */
+  public hasWram():boolean{
+    return !!(this.mapper&&this.mapper.addRam);
   }
   
   //设置卡带数据
@@ -63,30 +88,24 @@ export class CartridgeReader{
     this.romNum=this.dataView.getUint8(4);
     this.vromNum=this.dataView.getUint8(5);
     this.vromOffset=this.programOffset+this.romNum*16384;
-    //这个卡带规定的nametable的镜像方式
-    const nameTableMirror:number= this.dataView.getUint8(6) & 0xb;
+    const flags6=this.dataView.getUint8(6);
+    // bit0: 0=horizontal 1=vertical；bit3: four-screen
+    const fourScreen=(flags6&0x08)!==0;
+    const nameTableMirror=fourScreen
+      ?NametableType.FOUR_SCREEN
+      :((flags6&0x01)?NametableType.VIRTICAL:NametableType.HORIZONTAL);
     //MAPPER类型
-    this.mapperId= ((this.dataView.getUint8(6) >> 4) & 0xf) | (this.dataView.getUint8(7) & 0xf0);
+    this.mapperId=((flags6>>4)&0xf)|(this.dataView.getUint8(7)&0xf0);
     console.log('当前卡带类型',this.mapperId);
-    //有无增加ROM
-    this.hasAddedRom=(this.dataView.getUint8(6) & 0x2)!==0;
-    if(this.mapperId===0){
-      this.mapper=new Mapper0(this,this.vromNum!==0);
-      this.mapper.nametableMirror=nameTableMirror;
+    //有无电池 RAM 标志（兼容旧逻辑）；WRAM 由 mapper 自带 addRam
+    this.hasAddedRom=(flags6&0x2)!==0;
+
+    const Factory=MAPPER_FACTORIES[this.mapperId];
+    if(!Factory){
+      throw new Error('目前不支持 mapper '+this.mapperId);
     }
-    else if(this.mapperId===1){
-      this.mapper=new Mapper1(this,this.vromNum!==0);
-      this.mapper.nametableMirror=nameTableMirror;
-    }
-    else if(this.mapperId===2){
-      this.mapper=new Mapper2(this,this.vromNum!==0);
-      this.mapper.nametableMirror=nameTableMirror;
-    }
-    else{
-      throw new Error('目前不支持'+this.mapperId);
-      
-    }
-    //MAPPER
+    this.mapper=new Factory(this,this.vromNum!==0);
+    this.mapper.nametableMirror=nameTableMirror;
     return true;
   }
 
@@ -105,8 +124,11 @@ export class CartridgeReader{
     }
   }
 
-  //获取一页的数据
+  //获取 WRAM 一页的数据视图（offset 相对 $6000）
   public getPage(address:number):DataView{
+    if(!this.mapper.addRam){
+      throw new Error('卡带没有 WRAM');
+    }
     return new DataView(this.mapper.addRam,address,256);
   }
 }

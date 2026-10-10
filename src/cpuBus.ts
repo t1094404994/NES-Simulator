@@ -26,6 +26,11 @@ export class CpuBus{
 
   public setCartridgeReader(_cartridgeReader:CartridgeReader):void{
     this.cartridgeReader=_cartridgeReader;
+    this.cartridgeReader.mapper?.bindIrq?.(()=>this.tryIRQ());
+  }
+
+  private hasWram():boolean{
+    return !!(this.cartridgeReader&&this.cartridgeReader.hasWram());
   }
 
   public setCpu(_cpu:Cpu):void{
@@ -108,14 +113,12 @@ export class CpuBus{
     else if(busAddress >= 0x4000 && busAddress < 0x6000){
       return 0;
     }
-    //从增加的RAM中获取
+    //从增加的RAM中获取（以 mapper.addRam 为准，不限于 battery 位）
     else if(busAddress>=0x6000&&busAddress<0x8000){
-      if(this.cartridgeReader.hasAddedRom){
+      if(this.hasWram()){
         return this.cartridgeReader.mapper.cpuReadAddRom(busAddress);
-      }else{
-        console.warn('该卡带没有增加的RAM');
-        return 0;
       }
+      return 0;
     }
     else{
       return this.cartridgeReader.mapper.cpuReadRpg(busAddress);
@@ -191,7 +194,7 @@ export class CpuBus{
     }
     //扩展RAM
     else if(busAddress>=0x6000&&busAddress<0x8000){
-      if(this.cartridgeReader.hasAddedRom){
+      if(this.hasWram()){
         this.cartridgeReader.mapper.cpuWriteAddRom(busAddress,value);
       }
     }
@@ -208,24 +211,22 @@ export class CpuBus{
     //
   }
 
-  //获取一页的数据
+  //获取一页（256 字节）数据，供 $4014 OAM DMA 使用；支持 RAM / WRAM / PRG
   public getPage(pageId:number):DataView{
-    let address:number=pageId<<8;
-    let dataView:DataView;
-    //从RAM中获取
+    const address=(pageId&0xff)<<8;
     if(address<0x2000){
-      address=address&0x7ff;
-      dataView=this.cpuRam.getPage(address);
+      return this.cpuRam.getPage(address&0x700);
     }
-    //从增加的RAM中获取
-    else if(address>=0x6000&&address<0x8000){
-      if(this.cartridgeReader.hasAddedRom){
-        return this.cartridgeReader.getPage(address-0x6000);
-      }else{
-        console.warn('该卡带没有增加的RAM');
-      }
+    if(address>=0x6000&&address<0x8000&&this.hasWram()){
+      return this.cartridgeReader.getPage(address-0x6000);
     }
-    return dataView;
+    // PRG ROM 或其他区域：逐字节读取到临时缓冲
+    const buf=new ArrayBuffer(256);
+    const view=new DataView(buf);
+    for(let i=0;i<256;i++){
+      view.setUint8(i,this.getValue(address+i));
+    }
+    return view;
   }
 
   //尝试IRQ中断

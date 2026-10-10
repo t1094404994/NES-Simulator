@@ -1,5 +1,5 @@
-import {Mapper,CartridgeReader} from '../cartridge';
-import {NametableType} from '../ppuBus';
+import type {Mapper,CartridgeReader} from '../cartridge';
+import {NametableType} from '../nametableType';
 //Mapper1的扩展寄存器
 class RegCtrl{
   private data:number
