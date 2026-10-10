@@ -309,8 +309,10 @@ export class Cpu{
 
   //CPU执行可屏蔽中断
   public irq():void{
-    //console.log('CPU执行可屏蔽中断');
-    //把Program Counter和Status寄存器放到栈里面
+    // I=1 时忽略（与硬件一致，避免错误嵌套）
+    if(this.regSf.getI()){
+      return;
+    }
     this.stackPush(this.regPc >> 8);
     this.stackPush(this.regPc & 0xFF);
     this.stackPush(this.regSf.getData()|0x20);
@@ -318,7 +320,6 @@ export class Cpu{
     const lo:number=this.cpuBus.getValue(0xFFFE);
     const hi:number=this.cpuBus.getValue(0xFFFF)<<8;
     this.regPc =hi+lo;
-    //IRQ中断需要7个时钟周期
     this.cyclesWait += 7;
     this.cycleFrame+=7;
   }
@@ -359,23 +360,16 @@ export class Cpu{
     return 0;
   }
 
-  //数据入栈
+  //数据入栈（6502 SP 在 $00–$FF 环形回绕，禁止抛错打断仿真）
   private stackPush(value:number):void{
-    if(this.regSp===0){
-      throw new Error('栈溢出');
-    }
-    this.cpuBus.setValue(this.regSp+this.regSpOffSet,value);
-    this.regSp--;
+    this.cpuBus.setValue(this.regSpOffSet+(this.regSp&0xff),value&0xff);
+    this.regSp=(this.regSp-1)&0xff;
   }
 
   //数据出栈
   private stackPop():number{
-    if(this.regSp===0xff){
-      console.warn('空栈');
-      return 0;
-    }
-    this.regSp++;
-    return this.cpuBus.getValue(this.regSp+this.regSpOffSet);
+    this.regSp=(this.regSp+1)&0xff;
+    return this.cpuBus.getValue(this.regSpOffSet+this.regSp);
   }
 
   //寻址模式
@@ -1252,7 +1246,7 @@ export class Cpu{
     case 'TYA':
       return this.TYA();
     default:
-      console.warn('未定义的汇编操作');
+      // 非法/未实现操作码：当作 NOP，避免刷屏；多数游戏偶发踩到 unofficial NOP
       return 0;
     }
   }

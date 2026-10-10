@@ -60,9 +60,11 @@ export class Oamram{
     const sprite:OAMSprite={locX:0,locY:0,patterntableAddress:0,paletteDx:0,flipX:false,flipY:false,behindBackground:false};
     const offset:number=id*4;
     sprite.locY=this.dataView.getUint8(offset);
-    const bptableDx:number=this.dataView.getUint8(offset+1)& 1; //对于long sprite，最后一位的含义是使用哪个图案表
-    const tileDx:number= this.dataView.getUint8(offset+1) >> 1;
-    sprite.patterntableAddress=(bptableDx*0x100+tileDx*32)&0xffff;
+    // Nesdev 8x16: bit0 选图案表 $0000/$1000，bit7-1 为顶层 tile（偶数编号）
+    const tileByte=this.dataView.getUint8(offset+1);
+    const bank=(tileByte&1)*0x1000;
+    const topTile=tileByte&0xfe;
+    sprite.patterntableAddress=(bank+topTile*16)&0xffff;
     const bit3:number=this.dataView.getUint8(offset+2);
     sprite.paletteDx=bit3&0x3;
     sprite.behindBackground=(bit3&(1<<5))!==0;
@@ -92,9 +94,6 @@ export class PpuBus{
   //32字节调色板
   private palette:ArrayBuffer;
   private paletteDataView:DataView;
-  // MMC3 A12 边沿检测
-  private lastA12:number;
-
   //卡带
   private cartridgeReader:CartridgeReader;
   constructor(){
@@ -113,15 +112,11 @@ export class PpuBus{
     this.nameTable4DateView=new DataView(this.nameTable4);
     this.palette=new ArrayBuffer(32);
     this.paletteDataView=new DataView(this.palette);
-    this.lastA12=0;
   }
 
-  private updateA12(busAddress:number):void{
-    const a12=(busAddress>>12)&1;
-    if(a12===1&&this.lastA12===0){
-      this.cartridgeReader?.mapper?.notifyA12Rise?.();
-    }
-    this.lastA12=a12;
+  /** 扫描线渲染器用：每条扫描线时钟一次 MMC3 IRQ（约等于硬件 A12） */
+  public clockMapperIrq():void{
+    this.cartridgeReader?.mapper?.notifyA12Rise?.();
   }
 
   private nametableView(id:number):DataView{
@@ -139,7 +134,6 @@ export class PpuBus{
   }
   //从PPU总线获取数据
   public getValue(busAddress:number):number{
-    this.updateA12(busAddress);
     //获取图案表数据
     if(busAddress>=0&&busAddress<0x2000){
       return this.cartridgeReader.mapper.ppuReadPt(busAddress);
@@ -160,7 +154,6 @@ export class PpuBus{
 
   //从PPU总线设置数据
   public setValue(busAddress:number,value:number):void{
-    this.updateA12(busAddress);
     //尝试写入数据到卡带
     if(busAddress<=0x1fff){
       this.cartridgeReader.mapper.ppuWritePt(busAddress,value);

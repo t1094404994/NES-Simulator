@@ -187,6 +187,7 @@ export class Main{
   //开始运行
   public start():void{
     this.isPause=false;
+    this.unlockAudio();
     this.initAudio();
     this.enterFrame();
   }
@@ -214,14 +215,64 @@ export class Main{
     //console.log('渲染一帧画面');
   }
 
-  //INPUT组件输入数据
+  //INPUT 选择文件（手机端：需同步解锁音频，并兼容无 File.arrayBuffer 的环境）
   public setInputData(evt:Event):void{
     const target=<HTMLInputElement>evt.currentTarget;
-    const file=target.files[0];
-    file.arrayBuffer().then((value:ArrayBuffer)=>{
-      this.setCartidegData(value);
+    const file=target.files&&target.files[0];
+    // 取消选择时 files 为空，直接返回
+    if(!file){
+      return;
+    }
+    // iOS/Android：change 仍属用户手势窗口；先同步创建/resume AudioContext，
+    // 否则 await 读文件后手势失效，音频一直静音且部分机型后续逻辑异常
+    this.unlockAudio();
+    // 清空 value，否则再次选同一 ROM 不会触发 change（移动端很常见）
+    target.value='';
+    void this.loadRomFromFile(file);
+  }
+
+  /** 在用户手势同步栈内解锁 Web Audio（供选文件 / 点击开始使用） */
+  private unlockAudio():void{
+    const Ctx=window.AudioContext||(window as unknown as {webkitAudioContext:typeof AudioContext}).webkitAudioContext;
+    if(!Ctx){
+      return;
+    }
+    if(!this.audio){
+      try{
+        this.audio=new Ctx({sampleRate:SAMPLE_PER_SEC});
+      }catch{
+        this.audio=new Ctx();
+      }
+    }
+    if(this.audio.state==='suspended'){
+      void this.audio.resume();
+    }
+  }
+
+  private readFileAsArrayBuffer(file:File):Promise<ArrayBuffer>{
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>{
+        resolve(reader.result as ArrayBuffer);
+      };
+      reader.onerror=()=>{
+        reject(reader.error||new Error('FileReader failed'));
+      };
+      reader.readAsArrayBuffer(file);
     });
   }
+
+  private async loadRomFromFile(file:File):Promise<void>{
+    try{
+      const buffer=typeof file.arrayBuffer==='function'
+        ?await file.arrayBuffer()
+        :await this.readFileAsArrayBuffer(file);
+      this.setCartidegData(buffer);
+    }catch(err){
+      console.error('加载 ROM 失败',err);
+    }
+  }
+
   //获取div
   public inputComponent():HTMLElement{
     if(!this.inputDiv){
@@ -230,7 +281,10 @@ export class Main{
     if(!this.input){
       this.input= document.createElement('input');
       this.input.type='file';
-      this.input.name='点击上传文件';
+      this.input.name='rom';
+      // 引导系统文件选择器；部分 Android 对 .nes MIME 不识别，附带 octet-stream
+      this.input.accept='.nes,.NES,application/octet-stream';
+      this.input.setAttribute('aria-label','选择 NES ROM');
       this.input.addEventListener('change',this.setInputData);
       this.inputDiv.appendChild(this.input);
     }
@@ -260,20 +314,18 @@ export class Main{
     }
   }
 
-  //拖入
+  //拖入（桌面为主；手机多数无可靠 drop）
   public onDropover(evt:DragEvent):void{
-    //停止默认行为和冒泡
     if(evt){
       evt.preventDefault();
       evt.stopPropagation();
     }
-    //这里指需要单个文件，不需要items和reader
-    if(evt.dataTransfer.files&&evt.dataTransfer.files[0]){
-      const file:File=evt.dataTransfer.files[0];
-      file.arrayBuffer().then((value:ArrayBuffer)=>{
-        this.setCartidegData(value);
-      });
+    const file=evt.dataTransfer&&evt.dataTransfer.files&&evt.dataTransfer.files[0];
+    if(!file){
+      return;
     }
+    this.unlockAudio();
+    void this.loadRomFromFile(file);
   }
 
 

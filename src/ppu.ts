@@ -664,6 +664,10 @@ export class Ppu{
         this.regStatus.setSproverflow(sprOverflow);
       }
     }
+    // MMC3：每条预渲染/可见扫描线在 cycle 260 时钟一次 IRQ 计数器
+    if (this.cycle === 260 && this.scanline >= -1 && this.scanline <= 239){
+      this.ppuBus.clockMapperIrq();
+    }
     //一帧画面256x240的渲染完成
     if (this.scanline === 240 && this.cycle === 0){
       this.frameFinished++;

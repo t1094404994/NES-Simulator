@@ -26,10 +26,10 @@ export interface Mapper{
   //增加的RAM
   addRam?:ArrayBuffer,
   addRamDataView?:DataView,
-  /** PPU A12 上升沿（MMC3 IRQ）；可选 */
+  /** MMC3 扫描线 IRQ 时钟（由 PPU 每扫描线调用一次） */
   notifyA12Rise?:()=>void,
-  /** 绑定 IRQ 回调 */
-  bindIrq?:(tryIrq:()=>void)=>void,
+  /** 绑定 IRQ 置位 / 应答回调 */
+  bindIrq?:(tryIrq:()=>void,clearIrq?:()=>void)=>void,
   onFrameEnd?:()=>void,
 }
 

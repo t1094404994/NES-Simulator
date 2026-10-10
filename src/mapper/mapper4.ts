@@ -3,7 +3,7 @@ import {NametableType} from '../nametableType';
 
 /**
  * iNES Mapper 4 — MMC3 / TxROM
- * PRG/CHR banking、mirroring、WRAM、A12 scanline IRQ
+ * PRG/CHR banking、mirroring、WRAM、扫描线 IRQ
  */
 export class Mapper4 implements Mapper{
   private chRamPtr:ArrayBuffer;
@@ -28,12 +28,14 @@ export class Mapper4 implements Mapper{
   private irqReload:boolean;
   private irqEnable:boolean;
   private tryIrq:(()=>void)|null;
+  private clearIrq:(()=>void)|null;
 
   private prgBankCount:number;
   private chrBankCount1k:number;
 
   constructor(cartridge:CartridgeReader,hasVrom:boolean){
     this.tryIrq=null;
+    this.clearIrq=null;
     this.reset(cartridge,hasVrom);
   }
 
@@ -68,26 +70,31 @@ export class Mapper4 implements Mapper{
     this.irqEnable=false;
     this.nametableMirror=NametableType.VIRTICAL;
 
-    // romNum = 16KB banks → 8KB bank count = romNum * 2
     this.prgBankCount=Math.max(2,this.cartridge.romNum*2);
-    // vromNum = 8KB banks → 1KB bank count = vromNum * 8
     this.chrBankCount1k=hasVrom?Math.max(8,this.cartridge.vromNum*8):8;
   }
 
-  public bindIrq(tryIrq:()=>void):void{
+  public bindIrq(tryIrq:()=>void,clearIrq?:()=>void):void{
     this.tryIrq=tryIrq;
+    this.clearIrq=clearIrq||null;
   }
 
+  /**
+   * MMC3 IRQ 计数器时钟。
+   * 扫描线渲染器上应由 PPU 每条可见/预渲染扫描线调用一次（约 cycle 260），
+   * 不可对每个 CHR 读都调用，否则会 IRQ 风暴（SMB3 表现为栈被推爆）。
+   */
   public notifyA12Rise():void{
     if(this.irqCounter===0||this.irqReload){
       this.irqCounter=this.irqLatch;
     }else{
       this.irqCounter--;
     }
+    this.irqReload=false;
+
     if(this.irqCounter===0&&this.irqEnable){
       this.tryIrq?.();
     }
-    this.irqReload=false;
   }
 
   private mapPrg8k(bank:number,offset:number):number{
@@ -126,16 +133,15 @@ export class Mapper4 implements Mapper{
       }else{
         let v=value;
         if(this.bankSelect===0||this.bankSelect===1){
-          v&=0xfe; // 2KB CHR banks ignore low bit
+          v&=0xfe;
         }
         if(this.bankSelect===6||this.bankSelect===7){
-          v&=0x3f; // PRG bank low 6 bits
+          v&=0x3f;
         }
         this.bankRegs[this.bankSelect]=v;
       }
     }else if(busAddress<0xc000){
       if(even){
-        // 0 = vertical, 1 = horizontal (Nesdev MMC3)
         this.nametableMirror=(value&1)
           ?NametableType.HORIZONTAL
           :NametableType.VIRTICAL;
@@ -149,12 +155,13 @@ export class Mapper4 implements Mapper{
       }else{
         this.irqReload=true;
       }
+    }else if(even){
+      // $E000：禁止 IRQ 并应答挂起中断
+      this.irqEnable=false;
+      this.clearIrq?.();
     }else{
-      if(even){
-        this.irqEnable=false;
-      }else{
-        this.irqEnable=true;
-      }
+      // $E001：允许 IRQ（不应答）
+      this.irqEnable=true;
     }
   }
 
@@ -188,7 +195,6 @@ export class Mapper4 implements Mapper{
 
   private chrAddress(busAddress:number):number{
     const a=busAddress&0x1fff;
-    // 2KB 窗口：R0/R1 低位已清零，覆盖 bank 与 bank+1
     const map2k=(reg:number,offset:number)=>
       this.mapChr1k(reg+((offset>>10)&1),offset);
 
@@ -210,7 +216,6 @@ export class Mapper4 implements Mapper{
       }
       return this.mapChr1k(this.bankRegs[5],a);
     }
-    // CHR mode 1: 1KB at $0000–$0FFF，2KB at $1000/$1800
     if(a<0x400){
       return this.mapChr1k(this.bankRegs[2],a);
     }

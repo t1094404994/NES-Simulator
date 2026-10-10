@@ -20,13 +20,19 @@ export class CpuBus{
   //手柄
   private controllerL:Controller;
   private controllerR:Controller;
+  // 简易 open bus：不可读的 PPU 寄存器应返回总线残留值，而非 warn
+  private openBus:number;
   constructor(){
     this.cpuRam=new CpuRam();
+    this.openBus=0;
   }
 
   public setCartridgeReader(_cartridgeReader:CartridgeReader):void{
     this.cartridgeReader=_cartridgeReader;
-    this.cartridgeReader.mapper?.bindIrq?.(()=>this.tryIRQ());
+    this.cartridgeReader.mapper?.bindIrq?.(
+      ()=>this.tryIRQ(),
+      ()=>this.IrqAcknowledge()
+    );
   }
 
   private hasWram():boolean{
@@ -69,68 +75,60 @@ export class CpuBus{
    * @param busAddress 总线地址 
    */
   public getValue(busAddress:number):number{
+    let value=this.openBus;
     //从RAM中获取
     if(busAddress>=0&&busAddress<0x2000){
       //截掉高位 RAM实际只有2kb
-      return this.cpuRam.getBit(busAddress&0x7ff);
+      value=this.cpuRam.getBit(busAddress&0x7ff);
     }
     //从PPU中获取
     else if(busAddress>=0x2000&&busAddress<0x4000){
       switch(busAddress&0x2007){
       case 0x2000:
-        console.warn('CPU不能取得PPU  0x2000');
-        return 0;
       case 0x2001:
-        console.warn('CPU不能取得PPU  0x2001');
-        return 0;
-      case 0x2002:
-        return this.ppu.getStatus();
       case 0x2003:
-        console.warn('CPU不能取得PPU  0x2003');
-        return 0;
-      case 0x2004:
-        return this.ppu.getOamdata();
       case 0x2005:
-        console.warn('CPU不能取得PPU  0x2004');
-        return 0;
       case 0x2006:
-        console.warn('CPU不能取得PPU  0x2006');
-        return 0;
+        // 只写寄存器：读返回 open bus（游戏会合法地读这些地址）
+        value=this.openBus;
+        break;
+      case 0x2002:
+        value=this.ppu.getStatus();
+        break;
+      case 0x2004:
+        value=this.ppu.getOamdata();
+        break;
       case 0x2007:
-        return this.ppu.readData();
+        value=this.ppu.readData();
+        break;
       }
     }
     else if(busAddress===0x4015){
-      return this.apu.read4015();
+      value=this.apu.read4015();
     }
     //手柄
     else if(busAddress===0x4016){
-      return this.controllerL.getKeyState();
+      value=this.controllerL.getKeyState();
     }
     else if(busAddress===0x4017){
-      return this.controllerR.getKeyState();
+      value=this.controllerR.getKeyState();
     }
     else if(busAddress >= 0x4000 && busAddress < 0x6000){
-      return 0;
+      value=this.openBus;
     }
     //从增加的RAM中获取（以 mapper.addRam 为准，不限于 battery 位）
     else if(busAddress>=0x6000&&busAddress<0x8000){
       if(this.hasWram()){
-        return this.cartridgeReader.mapper.cpuReadAddRom(busAddress);
+        value=this.cartridgeReader.mapper.cpuReadAddRom(busAddress);
+      }else{
+        value=this.openBus;
       }
-      return 0;
     }
     else{
-      return this.cartridgeReader.mapper.cpuReadRpg(busAddress);
+      value=this.cartridgeReader.mapper.cpuReadRpg(busAddress);
     }
-    //从卡带中获取
-    // else if(busAddress>=0x8000){
-    //   return this.cartridgeReader.mapper.cpuReadRpg(busAddress);
-    // }
-    // else{
-    //   console.warn('getValue时的CPU总线地址发生溢出');
-    //   return 0;
-    // }
+    this.openBus=value&0xff;
+    return this.openBus;
   }
 
   /**
@@ -139,6 +137,7 @@ export class CpuBus{
    * @param value 值
    */
   public setValue(busAddress:number,value:number):void{
+    this.openBus=value&0xff;
     //RAM
     if(busAddress>=0&&busAddress<0x2000){
       this.cpuRam.setBit(busAddress&0x7ff,value);
