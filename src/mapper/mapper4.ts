@@ -133,11 +133,10 @@ export class Mapper4 implements Mapper{
       }else{
         let v=value;
         if(this.bankSelect===0||this.bankSelect===1){
-          v&=0xfe;
+          v&=0xfe; // 2KB CHR 窗口忽略最低位
         }
-        if(this.bankSelect===6||this.bankSelect===7){
-          v&=0x3f;
-        }
+        // PRG：原版 MMC3 仅 6bit（≤512KB）。汉化/1MB 卡（如 dq-cn/ff3-cn）需要更高位，
+        // 最终由 mapPrg8k 按 prgBankCount 取模，这里不再强行 & 0x3f。
         this.bankRegs[this.bankSelect]=v;
       }
     }else if(busAddress<0xc000){
@@ -180,16 +179,18 @@ export class Mapper4 implements Mapper{
   }
 
   public ppuReadPt(busAddress:number):number{
-    if(this.cartridge.vromNum===0){
-      return this.chRamPtrDataView.getUint8(busAddress&0x1fff);
-    }
+    // CHR ROM/RAM 都走 bank 映射；纯 CHR RAM 的汉化 MMC3 依赖此行为
     const addr=this.chrAddress(busAddress);
+    if(this.cartridge.vromNum===0){
+      return this.chRamPtrDataView.getUint8(addr%this.chRamPtr.byteLength);
+    }
     return this.vromDataView.getUint8(addr);
   }
 
   public ppuWritePt(busAddress:number,value:number):void{
     if(this.cartridge.vromNum===0){
-      this.chRamPtrDataView.setUint8(busAddress&0x1fff,value);
+      const addr=this.chrAddress(busAddress);
+      this.chRamPtrDataView.setUint8(addr%this.chRamPtr.byteLength,value);
     }
   }
 

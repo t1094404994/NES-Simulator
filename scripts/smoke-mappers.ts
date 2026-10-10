@@ -108,6 +108,32 @@ function smokeMapper4():void{
   console.log('OK mapper 4');
 }
 
+function smokeMapper4ChrRam():void{
+  // 模拟 dq-cn / ff3-cn：mapper4 + 大 PRG + CHR RAM
+  const cart=new CartridgeReader();
+  assert(cart.resetData(buildINes({mapper:4,prg16k:64,chr8k:0,battery:true})),'m4 chrram load');
+  const m=cart.mapper as Mapper4;
+  // 默认 CHR mode0：R0 映射 $0000 的 2KB。写入 PPU $0000 应进 banked CHR RAM
+  m.cpuWriteRpg(0x8000,0x00);
+  m.cpuWriteRpg(0x8001,0x00); // R0 = 0
+  m.ppuWritePt(0x0000,0x5a);
+  assert(m.ppuReadPt(0x0000)===0x5a,'m4 chrram rw bank0');
+  // 换 R0 到 bank 2，同地址应读到不同物理页（初始为 0）
+  m.cpuWriteRpg(0x8000,0x00);
+  m.cpuWriteRpg(0x8001,0x02);
+  assert(m.ppuReadPt(0x0000)!==0x5a,'m4 chrram bank switch');
+  m.ppuWritePt(0x0000,0xa5);
+  // 切回 bank 0，应仍是 0x5a
+  m.cpuWriteRpg(0x8000,0x00);
+  m.cpuWriteRpg(0x8001,0x00);
+  assert(m.ppuReadPt(0x0000)===0x5a,'m4 chrram bank0 preserved');
+  // 1MB PRG：bank 64（8KB）应可访问（不再被 &0x3f 裁掉）
+  m.cpuWriteRpg(0x8000,0x06);
+  m.cpuWriteRpg(0x8001,64);
+  assert(m.cpuReadRpg(0x8000)===32,'m4 prg bank64'); // 8KB bank64 = 16KB index 32
+  console.log('OK mapper 4 CHR-RAM + 1MB PRG');
+}
+
 function smokeMapper7():void{
   const cart=new CartridgeReader();
   assert(cart.resetData(buildINes({mapper:7,prg16k:4,chr8k:0})),'m7 load');
@@ -132,6 +158,7 @@ function main():void{
   smokeMapper2();
   smokeMapper3();
   smokeMapper4();
+  smokeMapper4ChrRam();
   smokeMapper7();
   smokeFourScreen();
   console.log('All mapper smoke tests passed.');
