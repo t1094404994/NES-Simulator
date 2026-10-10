@@ -1,8 +1,23 @@
 # NES-Simulator
-my NES simulator for web
-# 分支规范
-dev-开发分支
-per-预览分支
-pro-发行分支
-# 没有设计模式
-# 启动/打包项目:npm run start/build
+
+Web NES simulator library.
+
+## Scripts
+
+- `pnpm dev` — start playground
+- `pnpm build` — build library (ESM + UMD + types)
+- `pnpm typecheck` — TypeScript check
+
+## Library
+
+```ts
+import { Main } from 'nes-simulator';
+
+const nes = new Main();
+document.body.appendChild(nes.inputComponent());
+document.body.appendChild(nes.canvasComponent());
+```
+
+## Playground
+
+Demo app lives in `playground/`. It imports the local library entry via the `nes-simulator` alias.

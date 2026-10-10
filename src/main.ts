@@ -50,7 +50,7 @@ export class Main{
   //下次渲染帧调用时间
   private nextRenderTime:number;
   //是否暂停
-  private isPause:boolean;
+  public isPause:boolean;
 
   private allFarms=0;
   private audioarr:Array<number>=[];

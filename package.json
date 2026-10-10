@@ -1,32 +1,33 @@
 {
-  "name": "simulator",
+  "name": "nes-simulator",
   "version": "0.1.0",
   "description": "nes simulator",
   "private": true,
-  "dependencies": {
-    "vite": "^2.7.13"
+  "type": "module",
+  "main": "./dist/nes-simulator.umd.cjs",
+  "module": "./dist/nes-simulator.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/nes-simulator.js",
+      "require": "./dist/nes-simulator.umd.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^4.31.1",
-    "@typescript-eslint/parser": "^4.31.1",
-    "css-loader": "^6.2.0",
-    "eslint": "^7.32.0",
-    "html-webpack-plugin": "^5.3.2",
-    "style-loader": "^3.2.1",
-    "ts-loader": "^9.2.5",
-    "typescript": "^4.4.3",
-    "webpack": "^5.52.1",
-    "webpack-cli": "^4.8.0",
-    "webpack-dev-server": "^4.2.1",
-    "webpack-merge": "^5.8.0"
-  },
-  "scripts": {
-    "start": "webpack serve --open --config webpack.dev.js",
-    "build": "webpack --config webpack.prod.js",
-    "dev": "vite --host",
-    "build-vite": "vite build",
-    "preview-vite": "vite preview",
-    "lint": "eslint src"
+    "@types/node": "^25.0.3",
+    "@typescript/typescript6": "^6.0.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-dts": "^5.1.2"
   },
   "repository": {
     "type": "git",
