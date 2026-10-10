@@ -30,11 +30,17 @@ export class Main{
   //上传框
   private inputDiv:HTMLDivElement;
   private input:HTMLInputElement;
-  //音频上下文
+  //音频上下文 + 环形缓冲（由 ScriptProcessor 拉取，避免原地改正在播放的 AudioBuffer）
   private audio:AudioContext;
-
-  private audioSource:AudioBufferSourceNode;
-  private audioBuffer:AudioBuffer;
+  private audioRing:Float32Array;
+  private audioWritePos:number;
+  private audioReadPos:number;
+  private audioBuffered:number;
+  private scriptNode:ScriptProcessorNode;
+  private gainNode:GainNode;
+  private dcPrevIn:number;
+  private dcPrevOut:number;
+  private onAudioProcessBound:(e:AudioProcessingEvent)=>void;
 
   //渲染数据
   private imageData:ImageData;
@@ -52,8 +58,6 @@ export class Main{
   //是否暂停
   public isPause:boolean;
 
-  private allFarms=0;
-  private audioarr:Array<number>=[];
   constructor(){
     this.initNes();
     this.initConfig();
@@ -64,6 +68,12 @@ export class Main{
     this.onDropover=this.onDropover.bind(this);
     this.onDrag=this.onDrag.bind(this);
     this.onkeyboardEvent=this.onkeyboardEvent.bind(this);
+    this.onAudioProcessBound=this.onAudioProcess.bind(this);
+    this.audioWritePos=0;
+    this.audioReadPos=0;
+    this.audioBuffered=0;
+    this.dcPrevIn=0;
+    this.dcPrevOut=0;
   }
 
   private initNes():void{
@@ -135,15 +145,9 @@ export class Main{
       }
     }
     this.cpu.randerCall();
-    //补完
+    //补完并混音，写入环形缓冲供 Web Audio 拉取
     this.apu.finish();
-    this.setAudioData(this.allFarms*SAMPLE_PER_FRAME,(this.allFarms+1)*(SAMPLE_PER_FRAME));
-    if(this.allFarms===60){
-      this.allFarms=0;
-    }
-    this.allFarms++;
-    this.audioPlay();
-    //清除数据
+    this.pushAudioFrame();
     this.apu.clearSqe();
     return 0;
   }
@@ -183,8 +187,7 @@ export class Main{
   //开始运行
   public start():void{
     this.isPause=false;
-    this.initAudio(SAMPLE_PER_FRAME*60,SAMPLE_PER_SEC);
-    this.startAudio();
+    this.initAudio();
     this.enterFrame();
   }
 
@@ -194,6 +197,9 @@ export class Main{
     //不重置，则从暂停恢复后就会运行暂停时间内的代码
     this.nextLogicTime=0;
     this.nextRenderTime=0;
+    if(this.audio&&this.audio.state==='running'){
+      void this.audio.suspend();
+    }
   }
 
   //渲染一帧数据
@@ -271,102 +277,105 @@ export class Main{
   }
 
 
-  //初始化音频
-  private initAudio(perFrame:number,perSample:number):void{
-    const AudioContext = window.AudioContext;
-    if(AudioContext){
-      const allFrame:number=perFrame;
-      //创建音频上下文
-      if(this.audio===undefined) this.audio=new AudioContext();
-      const audioCtx:AudioContext=this.audio;
-      //双声道
-      const channels=2;
-      //创建音频数据源
-      if(!this.audioBuffer){
-        this.audioBuffer=audioCtx.createBuffer(channels,allFrame,perSample);
+  //初始化音频：环形缓冲 + ScriptProcessor 拉取
+  private initAudio():void{
+    const Ctx=window.AudioContext||(window as unknown as {webkitAudioContext:typeof AudioContext}).webkitAudioContext;
+    if(!Ctx){
+      return;
+    }
+    if(!this.audio){
+      // 尽量用 44100，与 APU 采样率一致，减少重采样伪影
+      try{
+        this.audio=new Ctx({sampleRate:SAMPLE_PER_SEC});
+      }catch{
+        this.audio=new Ctx();
       }
+    }
+    const ringLen=SAMPLE_PER_SEC*2;
+    if(!this.audioRing||this.audioRing.length!==ringLen){
+      this.audioRing=new Float32Array(ringLen);
+    }else{
+      this.audioRing.fill(0);
+    }
+    this.audioWritePos=0;
+    this.audioReadPos=0;
+    this.audioBuffered=0;
+    this.dcPrevIn=0;
+    this.dcPrevOut=0;
+
+    if(!this.scriptNode){
+      // 2048 samples ≈ 46ms @44.1k，平衡延迟与欠载
+      this.scriptNode=this.audio.createScriptProcessor(2048,0,1);
+      this.scriptNode.onaudioprocess=this.onAudioProcessBound;
+      this.gainNode=this.audio.createGain();
+      this.gainNode.gain.value=0.85;
+      this.scriptNode.connect(this.gainNode);
+      this.gainNode.connect(this.audio.destination);
+    }
+    if(this.audio.state==='suspended'){
+      void this.audio.resume();
     }
   }
 
-  //设置该帧的数据
-  private setAudioData(start:number,end:number):void{
-    //双声道
-    const channels=2;
-    const audiobuffer:AudioBuffer=this.audioBuffer;
-    // const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
-    for(let i=0;i<channels;i++){
-      const buffer:Float32Array=audiobuffer.getChannelData(i);
-      for(let i=start,n=0;i<end;i++,n++){
-        buffer[i]=this.apu.seqDataArr[n];
+  // 一帧混音结果写入环形缓冲（带简单 DC blocker；必要时重采样到 AudioContext 采样率）
+  private pushAudioFrame():void{
+    if(!this.audioRing){
+      return;
+    }
+    const ring=this.audioRing;
+    const ringLen=ring.length;
+    const srcLen=SAMPLE_PER_FRAME|0;
+    const srcRate=SAMPLE_PER_SEC;
+    const dstRate=this.audio?this.audio.sampleRate:srcRate;
+    const outLen=dstRate===srcRate?srcLen:Math.round(srcLen*dstRate/srcRate);
+
+    for(let i=0;i<outLen;i++){
+      let s:number;
+      if(dstRate===srcRate){
+        s=this.apu.seqDataArr[i];
+      }else{
+        const srcPos=i*srcRate/dstRate;
+        const i0=Math.min(srcLen-1,srcPos|0);
+        const i1=Math.min(srcLen-1,i0+1);
+        const frac=srcPos-i0;
+        const a=this.apu.seqDataArr[i0]||0;
+        const b=this.apu.seqDataArr[i1]||0;
+        s=a*(1-frac)+b*frac;
       }
+      if(!Number.isFinite(s)){
+        s=0;
+      }
+      // 一阶高通，去掉 NES 无符号输出的直流偏置，避免爆音/偏置咔哒
+      const y=s-this.dcPrevIn+0.996*this.dcPrevOut;
+      this.dcPrevIn=s;
+      this.dcPrevOut=y;
+      if(this.audioBuffered>=ringLen){
+        this.audioReadPos=(this.audioReadPos+1)%ringLen;
+        this.audioBuffered--;
+      }
+      ring[this.audioWritePos]=y;
+      this.audioWritePos=(this.audioWritePos+1)%ringLen;
+      this.audioBuffered++;
     }
   }
 
-  //开始
-  private startAudio():void{
-    const audioCtx:AudioContext=this.audio;
-    this.audioSource=audioCtx.createBufferSource();
-    this.audioSource.buffer=this.audioBuffer;
-    this.audioSource.loop=true;
-    //把节点连接到声音环境
-    this.audioSource.connect(audioCtx.destination);
-    this.audioSource.start();
-  }
-
-  //喂数据给 audio
-  public audioPlay():void{
-    //测试
-    // if(this.allFarms>600){
-    //   return;
-    // }
-    // if(this.allFarms===60){}
-    const AudioContext = window.AudioContext;
-    if(AudioContext){
-      const allFrame:number=SAMPLE_PER_FRAME;
-      //创建音频上下文
-      if(this.audio===undefined) this.audio=new AudioContext();
-      const audioCtx:AudioContext=this.audio;
-      //双声道
-      const channels=2;
-      //创建音频数据源
-      if(!this.audioBuffer){
-        this.audioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
+  private onAudioProcess(e:AudioProcessingEvent):void{
+    const out=e.outputBuffer.getChannelData(0);
+    if(!this.audioRing||this.isPause){
+      out.fill(0);
+      return;
+    }
+    const ring=this.audioRing;
+    const ringLen=ring.length;
+    for(let i=0;i<out.length;i++){
+      if(this.audioBuffered>0){
+        out[i]=ring[this.audioReadPos];
+        this.audioReadPos=(this.audioReadPos+1)%ringLen;
+        this.audioBuffered--;
+      }else{
+        // 欠载：输出静音，避免重复旧数据造成“噪声”
+        out[i]=0;
       }
-      const audiobuffer:AudioBuffer=this.audioBuffer;
-      // const audiobuffer:AudioBuffer=audioCtx.createBuffer(channels,allFrame,SAMPLE_PER_SEC);
-      const start=this.allFarms*60;
-      const end=start+60;
-      for(let i=0;i<channels;i++){
-        const buffer:Float32Array=audiobuffer.getChannelData(i);
-        const curr=i;
-        for(let i=0;i<allFrame;i++){
-          buffer[i]=this.apu.seqDataArr[i];
-          if(curr===0){
-            this.audioarr.push(this.apu.seqDataArr[i]);
-          }
-        }
-      }
-      //创建音频资源节点
-      if(!this.audioSource){
-        this.audioSource=audioCtx.createBufferSource();
-        this.audioSource.buffer=audiobuffer;
-        this.audioSource.loop=true;
-        //把节点连接到声音环境
-        this.audioSource.connect(audioCtx.destination);
-        this.audioSource.start();
-      }
-      // this.audioSource=audioCtx.createBufferSource();
-      // this.audioSource.buffer=audiobuffer;
-      // //把节点连接到声音环境
-      // this.audioSource.connect(audioCtx.destination);
-      // this.audioSource.start();
-      // if(this.allFarms&&this.allFarms===600){
-      //   this.audioSource.loop=false;
-      //   this.testplay();
-      //   // setInterval(()=>{
-      //   //   this.testplay();
-      //   // },10);
-      // }
     }
   }
 

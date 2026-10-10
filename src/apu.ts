@@ -481,14 +481,17 @@ class SquareWave{
       else if (this.currPeriod <= 7 || this.currPeriod >= 0x800){
         mute = true;
       }
+      // APU cycle = CPU/2；timer 周期为 (t+1) APU cycles
+      const period=this.currPeriod+1;
       this.cycle+=CPU_CYCLE_PER_SAMPLE*0.5;
-      const count=Math.floor(this.cycle/this.currPeriod);
-      this.cycle-=count*this.currPeriod;
+      const count=Math.floor(this.cycle/period);
+      this.cycle-=count*period;
       this.index+=count;
       if(this.index>=8){
         this.index=this.index%8;
       }
-      const seqVal:number=SquareWaveMap[this.regSquare.getDuty()][this.index]?1:-1;
+      // Nesdev: duty sequencer outputs 0 or 1 (not bipolar ±1)
+      const seqVal:number=SquareWaveMap[this.regSquare.getDuty()][this.index]?1:0;
       //计算这个采样点的音量
       let volume:number;
       if (mute){
@@ -502,7 +505,7 @@ class SquareWave{
       else{
         volume = this.envelopeValue;
       }
-      this.squareSeqDataView.setUint8(sampleLoc,(seqVal * volume)&0xff);
+      this.squareSeqDataView.setUint8(sampleLoc,(seqVal * volume)&0x0f);
     }
   }
 }
@@ -529,9 +532,9 @@ class TriangleWave{
   public index:number;
   private incMask:number;
   private playMask:number;
+  // 静音时保持最后输出电平（Nesdev: halt, do not force 0）
+  private lastOutput:number;
 
-  private nextValue:number
-  private lastPer:number
   constructor(){
     this.triangleReg=new TriangularRegister();
     this.triangleSeq=new ArrayBuffer(SAMPLE_PER_FRAME);
@@ -552,6 +555,7 @@ class TriangleWave{
     this.index=0;
     this.incMask=0;
     this.playMask=0;
+    this.lastOutput=0;
   }
 
   public clearTriangleSeq():void{
@@ -615,56 +619,26 @@ class TriangleWave{
       this.linearRestart = false;
   } 
 
-  //生成的数据没问题，可能是周期不同步或者什么原因
   public play(start:number,end:number):void{
     const enable=this.triangleReg.getStatusWrite();
-    if(!enable) this.nextValue=null;
     //采样周期 三角波是特例，以CPU周期为单位
+    const period=this.currPeriod+1;
     for(let sampleLoc=start;sampleLoc<end;sampleLoc++){
-      //计算这个采样点是否要静音.
+      // 长度/线性计数器为 0 或通道关闭时停止推进相位，保持最后电平
       if (!enable||this.lenCounter===0||this.linearCounter===0){
-        this.triangleSeqDataView.setUint8(sampleLoc,0);
-        this.cycle = 0;
-        // this.index=0;
+        this.triangleSeqDataView.setUint8(sampleLoc,this.lastOutput);
         continue;
       }
       this.cycle+=CPU_CYCLE_PER_SAMPLE;
-      const count=Math.floor(this.cycle/this.currPeriod);
-      this.cycle-=count*this.currPeriod;
-      // this.index+=this.incMask&count;
+      const count=Math.floor(this.cycle/period);
+      this.cycle-=count*period;
       this.index+=count;
-      //count可能大于1，所以取余
       if(this.index>=TriangleWaveMap.length){
         this.index=this.index%TriangleWaveMap.length;
       }
-      // const seqVal:number=TriangleWaveMap[this.index]&this.playMask;
       const seqVal:number=TriangleWaveMap[this.index];
+      this.lastOutput=seqVal;
       this.triangleSeqDataView.setUint8(sampleLoc,seqVal);
-      //测试
-      if(sampleLoc===start){
-        if(this.nextValue!==undefined&&this.nextValue!==null){
-          if(this.triangleSeqDataView.getUint8(0)!==this.nextValue){
-            console.warn('期待值是'+this.nextValue+' 实际值是'+this.triangleSeqDataView.getUint8(0));
-            this.nextValue=null;
-          }
-        }
-      }
-      if(sampleLoc===end-1){
-        let testCycle=this.cycle;
-        let testindex=this.index;
-        testCycle+=CPU_CYCLE_PER_SAMPLE;
-        const count=Math.floor(testCycle/this.currPeriod);
-        testCycle-=count*this.currPeriod;
-        testindex+=count;
-        //count可能大于1，所以取余
-        if(testindex>=TriangleWaveMap.length){
-          testindex=testindex%TriangleWaveMap.length;
-        }
-        // const seqVal:number=TriangleWaveMap[this.index]&this.playMask;
-        const testseqVal:number=TriangleWaveMap[testindex];
-        this.nextValue=testseqVal;
-        this.lastPer=this.currPeriod;
-      }
     }
   }
 }
@@ -766,28 +740,23 @@ class Noise{
   }
   
   public setLfsr():void{
-    //进行LFSR计算
-    const d0:number = this.regLfsr & 1;
-    let output:number;
+    // Nesdev: feedback = bit0 XOR bit1 (long) / bit6 (short); then shift; gate uses bit0
+    const bit0:number = this.regLfsr & 1;
+    let feedback:number;
     if (this.noiseReg.getNoiseMode()){
-      //短模式
-      const d6:number = (this.regLfsr>>6 & 1);
-      output = (d0 ^ d6)?1:0;
-      this.regLfsr = (this.regLfsr >> 1) | (output << 14);
+      feedback = bit0 ^ ((this.regLfsr>>6) & 1);
     }else{
-      //长模式
-      const d1:number = (this.regLfsr>>1 & 1);
-      output = (d0 ^ d1)?1:0;
-      this.regLfsr = (this.regLfsr >> 1) | (output << 14);
+      feedback = bit0 ^ ((this.regLfsr>>1) & 1);
     }
-    //计算这个采样点的音量
+    this.regLfsr = (this.regLfsr >> 1) | (feedback << 14);
     let volume:number;
-    if (this.noiseReg.getEnvelope()){ //使用固定音量
+    if (this.noiseReg.getEnvelope()){
       volume = this.noiseReg.getVolume();
-    }else{ //使用包络音量
+    }else{
       volume = this.envelopeVal;
     }
-    this.output=volume*output;
+    // mixer 在 shift register bit0 为 1 时静音
+    this.output = bit0 ? 0 : volume;
   }
 
   //播放
@@ -842,6 +811,7 @@ class DPCM{
     this.currAddress=0;
     this.currByte=0;
     this.bytesRemain=0;
+    this.byteRemain=0;
     this.outputLevel=0;
     this.cycle=0;
     this.clearDpcmSeq();
@@ -922,27 +892,17 @@ class DPCM{
   }
 
   public play(start:number,end:number):void{
-    // //如果已经读取完成。
-    if(!this.bytesRemain){
-      return;
-    }
-    const enable=this.dpcmReg.getStatusWrite();
-    //FC中的PCM原始周期
+    // DMC 始终输出计数器电平；enable 只控制样本读取
     const fcPeriod=this.dpcmReg.getPeriod();
-    //根据现在设置的采样率。算出新周期 A/T1=B/T2
-    const period=SAMPLE_PER_SEC*fcPeriod/CPU_CYCLE_PER_SEC;
     for(let sample_loc=start;sample_loc<end;sample_loc++){
-      if(!enable||!this.bytesRemain){
-        this.dpcmSeqDataView.setInt8(sample_loc,0);
-        this.cycle=0;
-        continue;
+      if(this.bytesRemain||this.byteRemain){
+        this.cycle+=CPU_CYCLE_PER_SAMPLE;
+        while(this.cycle>=fcPeriod){
+          this.cycle-=fcPeriod;
+          this.setDpmc();
+        }
       }
-      this.cycle+=CPU_CYCLE_PER_SAMPLE;
-      if(this.cycle>period){
-        this.cycle-=period;
-        this.setDpmc();
-      }
-      this.dpcmSeqDataView.setInt8(sample_loc,this.outputLevel);
+      this.dpcmSeqDataView.setUint8(sample_loc,this.outputLevel&0x7f);
     }
   }
 }
@@ -1106,80 +1066,77 @@ export class Apu{
   }
 
   public onFrameIrq():void{
-    //TODO APU执行可中断屏蔽还有点问题。
+    // IRQ inhibit (bit6 of $4017) 为 1 时禁止 frame IRQ
     if (!this.frameCounter.getFrameIrq()){
       this.frameInterrupt = true;
       this.cpuBus.tryIRQ();
     }
   }
 
-  //单步
+  //单步 — 时序对齐 Nesdev APU Frame Counter
   public step(cytle:number):void{
-    //调整寄存器的数值
     if (this.frameCounter.getMode()){
+      // mode 1 (5-step): e / e+l / e / - / e+l
       switch (this.clockCnt % 5){
       case 0:
         this.onEnvelopeLinearClock();
         break;
       case 1:
+        this.onEnvelopeLinearClock();
         this.onLengthSweepClock();
         break;
       case 2:
         this.onEnvelopeLinearClock();
         break;
       case 3:
-        this.onLengthSweepClock();
         break;
       case 4:
         this.onEnvelopeLinearClock();
+        this.onLengthSweepClock();
         break;
       default:
         break;
       }
     }else{
+      // mode 0 (4-step): e / e+l / e / e+l+f
       switch (this.clockCnt % 4){
       case 0:
-        this.onFrameIrq();
+        this.onEnvelopeLinearClock();
         break;
       case 1:
+        this.onEnvelopeLinearClock();
         this.onLengthSweepClock();
         break;
       case 2:
+        this.onEnvelopeLinearClock();
         break;
       case 3:
+        this.onEnvelopeLinearClock();
         this.onLengthSweepClock();
+        this.onFrameIrq();
         break;
       default:
         break;
       }
-      this.onEnvelopeLinearClock();
     }
-    //播放音频
     this.genWave(cytle);
     this.clockCnt++;
   }
 
   public mix():void{
-    //混音
-    let output=0;
-    let pulseOut=0;
-    let tndOut=0;
-    let pulse0=0;
-    let pulse1=0;
-    let triangle=0;
-    let noise=0;
-    let dpmc=0;
-    //产生噪音的原因在于每次音频衔接没有完美接上 TODO
+    // Nesdev APU Mixer：组内全 0 时该组输出必须为 0（禁止除零）
     for (let t= 0; t < SAMPLE_PER_FRAME; t++){
-      pulse0=this.square0.squareSeqDataView.getInt8(t);
-      pulse1=this.square1.squareSeqDataView.getInt8(t);
-      triangle=this.triangle.triangleSeqDataView.getInt8(t);
-      noise=this.noise.noiseSeqDataView.getInt8(t);
-      dpmc=this.dpcm.dpcmSeqDataView.getInt8(t);
-      pulseOut=95.88/((8128/(pulse0+pulse1))+100);
-      tndOut=159.79/((1/((triangle/8227)+(noise/12241)+(dpmc/22638)))+100);
-      output=pulseOut+tndOut;
-      this.seqDataView.setInt16(t*2,Math.floor(output*100*0xff));
+      const pulse0=this.square0.squareSeqDataView.getUint8(t)&0x0f;
+      const pulse1=this.square1.squareSeqDataView.getUint8(t)&0x0f;
+      const triangle=this.triangle.triangleSeqDataView.getUint8(t)&0x0f;
+      const noise=this.noise.noiseSeqDataView.getUint8(t)&0x0f;
+      const dpmc=this.dpcm.dpcmSeqDataView.getUint8(t)&0x7f;
+      const pulseSum=pulse0+pulse1;
+      const pulseOut=pulseSum>0?95.88/((8128/pulseSum)+100):0;
+      const tnd=(triangle/8227)+(noise/12241)+(dpmc/22638);
+      const tndOut=tnd>0?159.79/((1/tnd)+100):0;
+      const output=pulseOut+tndOut;
+      this.seqDataView.setInt16(t*2,Math.floor(output*32767));
       this.seqDataArr[t]=output;
     }
   }
