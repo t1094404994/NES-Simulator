@@ -89,6 +89,10 @@ export class PpuMask{
     if (this.data & (1 << 4)) return 1;
     else return 0;
   }
+  /** Nesdev：背景或精灵任一开启即为 rendering enabled */
+  public isRenderingEnabled():boolean{
+    return !!(this.data&(1<<3))||!!(this.data&(1<<4));
+  }
   //bit5,6,7 NTSC PAL 颜色强调使能标志位 rgb
 }
 
@@ -259,6 +263,8 @@ export class Ppu{
 
   //调色板数据 [64][3] 没有A值
   private palette:Array<Array<number>>;
+  private suppressVblank:boolean;
+  private nmiDelayDots:number;
 
   private cpu:Cpu;
 
@@ -288,6 +294,8 @@ export class Ppu{
     this.scanlineSprDxView=new DataView(this.scanlineSprDx);
     this.frameDx=0;
     this.frameFinished=-1;
+    this.suppressVblank=false;
+    this.nmiDelayDots=0;
     //256*240实际渲染像素, 每个像素包括R,G,B,A值(nes本身没有A值,这里加上方便拓展)
     this.frameData=new ArrayBuffer(256*240*4);
     this.frameDataView=new DataView(this.frameData);
@@ -376,7 +384,16 @@ export class Ppu{
   //CPU调用的接口
   //写入PPU控制寄存器
   public writeCtrl(value:number):void{
+    const wasNmiEnabled=!!this.regCtrl.getNmi();
     this.regCtrl.setData(value);
+    if(!this.regCtrl.getNmi()){
+      this.nmiDelayDots=0;
+    }else if(!wasNmiEnabled&&this.regStatus.getVblank()){
+      // 与预渲染行清 VBL 同一点打开 NMI 时，/NMI 来不及形成下降沿
+      if(!(this.scanline===-1&&this.cycle===1)){
+        this.cpu.requestNmi(1);
+      }
+    }
     //设置nametable的时候要修改tempAddress的内容
     this.tmpAddress.setNametable(value&0x3);
   }
@@ -388,6 +405,13 @@ export class Ppu{
   //获取状态寄存器
   public getStatus():number{
     const data:number= this.regStatus.getData();
+    if(this.scanline===241&&this.cycle===1){
+      this.suppressVblank=true;
+    }
+    // 置位当拍或下一拍读到 V，但 NMI 还没送到 CPU，读 $2002 会把它掐掉
+    if(this.nmiDelayDots>0){
+      this.nmiDelayDots=0;
+    }
     this.regStatus.setVblank(false);
     this.addressLatch = true;
     return data;
@@ -461,6 +485,12 @@ export class Ppu{
 
   //PPU主循环
   public step():void{
+    if(this.nmiDelayDots>0){
+      this.nmiDelayDots--;
+      if(this.nmiDelayDots===0&&this.regCtrl.getNmi()){
+        this.cpu.requestNmi(2);
+      }
+    }
     if (this.scanline === -1){
       // PreRender扫描线
       if (this.cycle === 1){
@@ -468,11 +498,11 @@ export class Ppu{
         this.regStatus.setSpr0hit(false);
         this.regStatus.setSproverflow(false);
       }
-      if (this.cycle === 258 && this.regMask.getShowbkg() && this.regMask.getShowspr()){
+      if (this.cycle === 258 && this.regMask.isRenderingEnabled()){
         this.dataAddress.setXscroll(this.tmpAddress.getXscroll());
         this.dataAddress.setNametableX(this.tmpAddress.getNametableX());
       }
-      if (this.cycle >= 280 && this.cycle <= 304 && this.regMask.getShowbkg() && this.regMask.getShowspr()){
+      if (this.cycle >= 280 && this.cycle <= 304 && this.regMask.isRenderingEnabled()){
         this.dataAddress.setYscroll(this.tmpAddress.getYscroll());
         this.dataAddress.setNametableY(this.tmpAddress.getNametableY());
         this.dataAddress.setYfine(this.tmpAddress.getYfine());
@@ -621,7 +651,7 @@ export class Ppu{
         this.frameDataView.setUint8(point+2,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][2]);
         this.frameDataView.setUint8(point+3,255);
       }
-      if (this.cycle === 257 && this.regMask.getShowbkg()){
+      if (this.cycle === 257 && this.regMask.isRenderingEnabled()){
         const yInTile:number = this.dataAddress.getYfine();
         if (yInTile === 7){
           this.dataAddress.setYfine(0);
@@ -638,7 +668,7 @@ export class Ppu{
           this.dataAddress.setYfine(yInTile + 1);
         }
       }
-      if (this.cycle === 258 && this.regMask.getShowbkg() && this.regMask.getShowspr()){
+      if (this.cycle === 258 && this.regMask.isRenderingEnabled()){
         this.dataAddress.setXscroll(this.tmpAddress.getXscroll());
         this.dataAddress.setNametableX(this.tmpAddress.getNametableX());
       }
@@ -664,8 +694,13 @@ export class Ppu{
         this.regStatus.setSproverflow(sprOverflow);
       }
     }
-    // MMC3：每条预渲染/可见扫描线在 cycle 260 时钟一次 IRQ 计数器
-    if (this.cycle === 260 && this.scanline >= -1 && this.scanline <= 239){
+    // MMC3：仅在渲染开启时时钟 IRQ（关闭渲染时 PPU 不产生 A12 上升沿）
+    if (
+      this.cycle === 260 &&
+      this.scanline >= -1 &&
+      this.scanline <= 239 &&
+      this.regMask.isRenderingEnabled()
+    ){
       this.ppuBus.clockMapperIrq();
     }
     //一帧画面256x240的渲染完成
@@ -677,26 +712,28 @@ export class Ppu{
       if (this.scanline === 241 && this.cycle === 1)
       {
         //进入垂直消隐：挂起 NMI，由 CPU 在指令边界采样
-        this.regStatus.setVblank(true);
-        if (this.regCtrl.getNmi())
-          this.cpu.requestNmi();
+        if(this.suppressVblank){
+          this.suppressVblank=false;
+        }else{
+          this.regStatus.setVblank(true);
+          if (this.regCtrl.getNmi())
+            this.nmiDelayDots=2;
+        }
       }
     }
-    //scanline和cycle递增
-    if (this.scanline === -1 && this.cycle >= 340 - (!this.evenFrame && this.regMask.getShowbkg() && this.regMask.getShowspr())){
-      // 渲染奇数像素时，会把第-1条扫描线的第340个周期直接过掉
-      this.cycle = 0;
-      this.scanline = 0;
-    }else{
+    // 奇数帧在预渲染 dot 338 结束时少走一拍。此时已能看见 dot 338 的 $2001，但还看不见 dot 339 的写入
+    if(this.scanline===-1&&this.cycle===338&&!this.evenFrame&&this.regMask.isRenderingEnabled()){
       this.cycle++;
-      if (this.cycle === 341){
-        this.cycle = 0;
-        this.scanline++;
-        if (this.scanline >= 261){
-          this.evenFrame = !this.evenFrame;
-          this.scanline = -1;
-          this.frameDx++;
-        }
+    }
+    //scanline和cycle递增
+    this.cycle++;
+    if (this.cycle === 341){
+      this.cycle = 0;
+      this.scanline++;
+      if (this.scanline >= 261){
+        this.evenFrame = !this.evenFrame;
+        this.scanline = -1;
+        this.frameDx++;
       }
     }
   }

@@ -21,7 +21,8 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke:mappers": "npx --yes tsx scripts/smoke-mappers.ts"
+    "smoke:mappers": "npx --yes tsx scripts/smoke-mappers.ts",
+    "test:nesdev": "npx --yes tsx scripts/run-nesdev.ts"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

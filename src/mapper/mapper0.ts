@@ -3,6 +3,8 @@ export class Mapper0 implements Mapper{
   //TODO如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 卡带上为什么会没有图案表？
   private chRamPtr:ArrayBuffer;
   private chRamPtrDataView:DataView;
+  public addRam:ArrayBuffer;
+  public addRamDataView:DataView;
   //RPG数据视图
   private rpgDataView:DataView;
   //vRom数据视图
@@ -24,6 +26,8 @@ export class Mapper0 implements Mapper{
       this.chRamPtr=null;
       this.chRamPtrDataView=null;
     }
+    this.addRam=new ArrayBuffer(0x2000);
+    this.addRamDataView=new DataView(this.addRam);
     this.cartridge=_cartridge;
     //根据卡带数据 设置RPG和VROM数据视图
     this.rpgDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.programOffset,this.cartridge.romNum*16384);
@@ -60,12 +64,11 @@ export class Mapper0 implements Mapper{
   }
   //CPU读取的扩展ROM
   public cpuReadAddRom(busAddress:number):number{
-    console.warn(busAddress+'MAPPER0(没有MAPPER)不支持cpuWriteAddRom');
-    return 0;
+    return this.addRamDataView.getUint8(busAddress-0x6000);
   }
   //CPU写入扩展ROM
   public cpuWriteAddRom(busAddress:number,value:number):void{
-    console.warn(busAddress+':'+value+'MAPPER0(没有MAPPER)不支持cpuWriteAddRom');
+    this.addRamDataView.setUint8(busAddress-0x6000,value);
   }
 
   //PPU读取图案表 ppu总线地址

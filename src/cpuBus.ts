@@ -228,19 +228,19 @@ export class CpuBus{
     return view;
   }
 
-  //尝试IRQ中断
+  //尝试IRQ中断：始终挂起；I=0 时在下一条指令边界进入
   public tryIRQ():void{
-    if(this.cpu.regSf.getI()){
-      this.cpu.irqFlag=1;
-    }else{
+    this.cpu.irqFlag=1;
+    if(!this.cpu.regSf.getI()){
       this.cpu.irqCounter=1;
     }
   }
 
-  //清除IRQ
+  //清除IRQ（MMC3 $E000）
   public IrqAcknowledge():void{
     this.cpu.irqFlag=0;
     this.cpu.irqCounter=0;
+    this.cpu.irqInProcess=0;
   }
 
   //获取该帧的cpu周期

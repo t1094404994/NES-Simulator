@@ -177,6 +177,12 @@ export class Cpu{
   public irqInProcess:number;
   // NMI 挂起：PPU 置位后，在指令边界响应
   public nmiPending:boolean;
+  private nmiDelay:number;
+  // 变址前地址的高字节，以及是否跨页（SHX/SHY/AHX/TAS）
+  private operandHi:number;
+  private pageCrossed:boolean;
+  // KIL/JAM：CPU 停止取指
+  private halted:boolean;
   //测试
   private testCycles=0;
   //CPU循环计数
@@ -198,6 +204,10 @@ export class Cpu{
     this.irqFlag=0;
     this.irqInProcess=0;
     this.nmiPending=false;
+    this.nmiDelay=0;
+    this.operandHi=0;
+    this.pageCrossed=false;
+    this.halted=false;
     this.setFrame(60);
     this.initTable();
   }
@@ -216,6 +226,8 @@ export class Cpu{
     this.regSf.setI(true);
     this.regSf.setU(true);
     this.nmiPending=false;
+    this.nmiDelay=0;
+    this.halted=false;
     this.irqCounter=0;
     this.irqFlag=0;
     this.irqInProcess=0;
@@ -253,28 +265,95 @@ export class Cpu{
       {name:'BNE',addressMode: AddressMode.REL,cycleCnt: 2},{name:'CMP',addressMode: AddressMode.IZY,cycleCnt:5 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'CMP',addressMode:AddressMode.ZPX,cycleCnt:4},{name: 'DEC',addressMode:AddressMode.ZPX,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6 },{name: 'CLD',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'CMP',addressMode:AddressMode.ABY,cycleCnt:4 },{name: 'NOP',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:7 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'CMP',addressMode:AddressMode.ABX,cycleCnt:4},{name: 'DEC',addressMode:AddressMode.ABX,cycleCnt:7},{name: '???',addressMode:AddressMode.IMP,cycleCnt:7},
       {name:'CPX',addressMode: AddressMode.IMM,cycleCnt: 2},{name:'SBC',addressMode: AddressMode.IZX,cycleCnt:6 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: 'CPX',addressMode:AddressMode.ZP0,cycleCnt:3 },{name: 'SBC',addressMode:AddressMode.ZP0,cycleCnt:3},{name: 'INC',addressMode:AddressMode.ZP0,cycleCnt:5},{name: '???',addressMode:AddressMode.IMP,cycleCnt:5 },{name: 'INX',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'SBC',addressMode:AddressMode.IMM,cycleCnt:2 },{name: 'NOP',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'CPX',addressMode:AddressMode.ABS,cycleCnt:4 },{name: 'SBC',addressMode:AddressMode.ABS,cycleCnt:4},{name: 'INC',addressMode:AddressMode.ABS,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6},
       {name:'BEQ',addressMode: AddressMode.REL,cycleCnt: 2},{name:'SBC',addressMode: AddressMode.IZY,cycleCnt:5 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:8},{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'SBC',addressMode:AddressMode.ZPX,cycleCnt:4},{name: 'INC',addressMode:AddressMode.ZPX,cycleCnt:6},{name: '???',addressMode:AddressMode.IMP,cycleCnt:6 },{name: 'SED',addressMode:AddressMode.IMP,cycleCnt:2 },{name: 'SBC',addressMode:AddressMode.ABY,cycleCnt:4 },{name: 'NOP',addressMode:AddressMode.IMP,cycleCnt:2 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:7 },{name: '???',addressMode:AddressMode.IMP,cycleCnt:4 },{name: 'SBC',addressMode:AddressMode.ABX,cycleCnt:4},{name: 'INC',addressMode:AddressMode.ABX,cycleCnt:7},{name: '???',addressMode:AddressMode.IMP,cycleCnt:7},];
+    this.defineUnofficial();
+  }
+
+  // 非官方操作码：寻址和周期与对应的官方指令对齐
+  private defineUnofficial():void{
+    const set=(opcode:number,name:string,mode:AddressMode,cycles:number):void=>{
+      this.opcodeMapTable[opcode]={name,addressMode:mode,cycleCnt:cycles};
+    };
+    const rmw=(base:number,name:string):void=>{
+      set(base+0x00,name,AddressMode.IZX,8);
+      set(base+0x04,name,AddressMode.ZP0,5);
+      set(base+0x0c,name,AddressMode.ABS,6);
+      set(base+0x10,name,AddressMode.IZY,8);
+      set(base+0x14,name,AddressMode.ZPX,6);
+      set(base+0x18,name,AddressMode.ABY,7);
+      set(base+0x1c,name,AddressMode.ABX,7);
+    };
+    rmw(0x03,'SLO');
+    rmw(0x23,'RLA');
+    rmw(0x43,'SRE');
+    rmw(0x63,'RRA');
+    rmw(0xc3,'DCP');
+    rmw(0xe3,'ISC');
+    set(0x83,'SAX',AddressMode.IZX,6);
+    set(0x87,'SAX',AddressMode.ZP0,3);
+    set(0x8f,'SAX',AddressMode.ABS,4);
+    set(0x97,'SAX',AddressMode.ZPY,4);
+    set(0xa3,'LAX',AddressMode.IZX,6);
+    set(0xa7,'LAX',AddressMode.ZP0,3);
+    set(0xaf,'LAX',AddressMode.ABS,4);
+    set(0xb3,'LAX',AddressMode.IZY,5);
+    set(0xb7,'LAX',AddressMode.ZPY,4);
+    set(0xbf,'LAX',AddressMode.ABY,4);
+    for(const opcode of [0x04,0x44,0x64]) set(opcode,'NOP',AddressMode.ZP0,3);
+    for(const opcode of [0x14,0x34,0x54,0x74,0xd4,0xf4]) set(opcode,'NOP',AddressMode.ZPX,4);
+    for(const opcode of [0x80,0x82,0x89,0xc2,0xe2]) set(opcode,'NOP',AddressMode.IMM,2);
+    for(const opcode of [0x1a,0x3a,0x5a,0x7a,0xda,0xfa]) set(opcode,'NOP',AddressMode.IMP,2);
+    set(0x0c,'NOP',AddressMode.ABS,4);
+    for(const opcode of [0x1c,0x3c,0x5c,0x7c,0xdc,0xfc]) set(opcode,'NOP',AddressMode.ABX,4);
+    set(0x0b,'AAC',AddressMode.IMM,2);
+    set(0x2b,'AAC',AddressMode.IMM,2);
+    set(0x4b,'ASR',AddressMode.IMM,2);
+    set(0x6b,'ARR',AddressMode.IMM,2);
+    set(0xab,'ATX',AddressMode.IMM,2);
+    set(0xcb,'AXS',AddressMode.IMM,2);
+    set(0xeb,'SBC',AddressMode.IMM,2);
+    set(0x8b,'ANE',AddressMode.IMM,2);
+    set(0x93,'AHX',AddressMode.IZY,6);
+    set(0x9f,'AHX',AddressMode.ABY,5);
+    set(0x9c,'SHY',AddressMode.ABX,5);
+    set(0x9e,'SHX',AddressMode.ABY,5);
+    set(0x9b,'TAS',AddressMode.ABY,5);
+    set(0xbb,'LAS',AddressMode.ABY,4);
+    for(const opcode of [0x02,0x12,0x22,0x32,0x42,0x52,0x62,0x72,0x92,0xb2,0xd2,0xf2]){
+      set(opcode,'KIL',AddressMode.IMP,2);
+    }
   }
 
   //CPU主循环
   public step():void{
+    if(this.halted){
+      this.clockCount++;
+      return;
+    }
     if(this.cyclesWait===0){
       // NMI 优先于 IRQ，在指令边界采样
       if(this.nmiPending){
-        this.nmiPending=false;
-        this.nmi();
-        this.cyclesWait--;
-        this.clockCount++;
-        return;
-      }
-      // IRQ 处理
-      if(this.irqCounter) {
-        --this.irqCounter;
-        if(this.irqCounter === 0) {
-          this.irqInProcess =1;
-          this.irq();
+        if(this.nmiDelay>0){
+          this.nmiDelay--;
+        }else{
+          this.nmiPending=false;
+          this.nmi();
           this.cyclesWait--;
           this.clockCount++;
           return;
+        }
+      }
+      // IRQ 处理。I=1 时保持挂起，不能把 cyclesWait 减成负数把 CPU 卡死
+      if(this.irqCounter) {
+        --this.irqCounter;
+        if(this.irqCounter === 0) {
+          if(!this.regSf.getI()){
+            this.irqInProcess =1;
+            this.irq();
+            this.cyclesWait--;
+            this.clockCount++;
+            return;
+          }
+          this.irqFlag=1;
         }
       }
       //根据程序寄存器寄存的地址，读取汇编操作码
@@ -303,16 +382,20 @@ export class Cpu{
     this.cycleFrame=0;
   }
 
-  public requestNmi():void{
+  public requestNmi(delayInstructions=0):void{
     this.nmiPending=true;
+    this.nmiDelay=Math.max(this.nmiDelay,delayInstructions);
   }
 
   //CPU执行可屏蔽中断
   public irq():void{
-    // I=1 时忽略（与硬件一致，避免错误嵌套）
+    // I=1 时保持挂起，等 CLI/PLP/RTI 后再进（勿丢弃）
     if(this.regSf.getI()){
+      this.irqFlag=1;
+      this.irqInProcess=0;
       return;
     }
+    this.irqFlag=0;
     this.stackPush(this.regPc >> 8);
     this.stackPush(this.regPc & 0xFF);
     this.stackPush(this.regSf.getData()|0x20);
@@ -403,8 +486,10 @@ export class Cpu{
     const lo:number=this.cpuBus.getValue(this.regPc++);
     const hi:number=this.cpuBus.getValue(this.regPc++)<<8;
     this.address=(hi)+lo+this.regX;
+    this.operandHi=hi>>8;
     //偏移了X之后如果发生了翻页，则需要多加一个时钟周期
-    if ((hi)!==(this.address & 0xFF00)) return 1;
+    this.pageCrossed=(hi)!==(this.address & 0xFF00);
+    if (this.pageCrossed) return 1;
     else return 0;
   }
 
@@ -413,8 +498,10 @@ export class Cpu{
     const lo:number=this.cpuBus.getValue(this.regPc++);
     const hi:number=this.cpuBus.getValue(this.regPc++)<<8;
     this.address=(hi)+lo+this.regY;
-    //偏移了X之后如果发生了翻页，则需要多加一个时钟周期
-    if ((hi)!==(this.address & 0xFF00)) return 1;
+    this.operandHi=hi>>8;
+    //偏移了Y之后如果发生了翻页，则需要多加一个时钟周期
+    this.pageCrossed=(hi)!==(this.address & 0xFF00);
+    if (this.pageCrossed) return 1;
     else return 0;
   }
 
@@ -463,9 +550,11 @@ export class Cpu{
     const lo:number=this.cpuBus.getValue(this.address);
     //取值在零页内
     const hi:number=this.cpuBus.getValue(this.address+1&0xff)<<8;
+    this.operandHi=hi>>8;
     this.address=hi+lo+this.regY;
     //偏移了Y之后如果发生了翻页(regY+lo>=256)，则需要多加一个时钟周期
-    if ((hi) !== (this.address & 0xFF00)) return 1;
+    this.pageCrossed=(hi) !== (this.address & 0xFF00);
+    if (this.pageCrossed) return 1;
     else return 0;
   }
 
@@ -634,17 +723,13 @@ export class Cpu{
    * BRK虽然是单字节指令, 但是会让PC + 2, 所以干脆认为是双字节指令也不错.
    */
   private BRK():number{
-    //1.把Program Counter接下来的指令位置和Status寄存器放到栈里面
-    this.regPc++;
-    //手动模拟溢出
-    this.regPc=this.regPc&0xffff;
-    //分别把高八位和低八位推入栈
+    // IMM 寻址已消费 BRK 的填充字节，regPc 现在就是中断返回地址。
     this.stackPush(this.regPc>>8);
     this.stackPush(this.regPc&0xff);
     this.regSf.setB(true);
-    this.regSf.setI(true);
     this.stackPush(this.regSf.getData());
     this.regSf.setB(false);
+    this.regSf.setI(true);
     //2.从中断地址处获取新的Program Counter值
     const lo8:number= this.cpuBus.getValue(0xFFFE); //小端序
     const hi8:number= this.cpuBus.getValue(0xFFFF);
@@ -985,9 +1070,11 @@ export class Cpu{
     const lo:number=this.stackPop();
     const hi:number=this.stackPop()<<8;
     this.regPc=hi+lo;
-    //清除IRQ计数
-    this.irqCounter=this.irqInProcess&this.irqFlag&((~this.regSf.getData())>>2);
     this.irqInProcess=0;
+    // 若 IRQ 仍挂起且 I 已清，在下一条指令边界进入
+    if(this.irqFlag&&!this.regSf.getI()){
+      this.irqCounter=1;
+    }
     return 0;
   }
 
@@ -1245,10 +1332,226 @@ export class Cpu{
       return this.TXS();
     case 'TYA':
       return this.TYA();
+    case 'SLO':
+      return this.SLO();
+    case 'RLA':
+      return this.RLA();
+    case 'SRE':
+      return this.SRE();
+    case 'RRA':
+      return this.RRA();
+    case 'SAX':
+      return this.SAX();
+    case 'LAX':
+      return this.LAX();
+    case 'DCP':
+      return this.DCP();
+    case 'ISC':
+      return this.ISC();
+    case 'AAC':
+      return this.AAC();
+    case 'ASR':
+      return this.ASR();
+    case 'ARR':
+      return this.ARR();
+    case 'ATX':
+      return this.ATX();
+    case 'AXS':
+      return this.AXS();
+    case 'ANE':
+      return this.ANE();
+    case 'AHX':
+      return this.AHX();
+    case 'SHY':
+      return this.SHY();
+    case 'SHX':
+      return this.SHX();
+    case 'TAS':
+      return this.TAS();
+    case 'LAS':
+      return this.LAS();
+    case 'KIL':
+      this.halted=true;
+      return 0;
     default:
       // 非法/未实现操作码：当作 NOP，避免刷屏；多数游戏偶发踩到 unofficial NOP
       return 0;
     }
+  }
+
+  private setZN(value:number):void{
+    this.regSf.setZ((value&0xff)===0);
+    this.regSf.setN((value&0x80)!==0);
+  }
+
+  // ASL 后 ORA
+  private SLO():number{
+    const operand:number=this.cpuBus.getValue(this.address);
+    const shifted:number=operand<<1;
+    this.cpuBus.setValue(this.address,shifted&0xff);
+    this.regSf.setC(shifted>0xff);
+    this.regA=(this.regA|(shifted&0xff))&0xff;
+    this.setZN(this.regA);
+    return 0;
+  }
+
+  // ROL 后 AND
+  private RLA():number{
+    const operand:number=this.cpuBus.getValue(this.address);
+    const shifted:number=(operand<<1)|this.regSf.getC();
+    this.cpuBus.setValue(this.address,shifted&0xff);
+    this.regSf.setC((shifted&0x100)!==0);
+    this.regA=this.regA&(shifted&0xff);
+    this.setZN(this.regA);
+    return 0;
+  }
+
+  // LSR 后 EOR
+  private SRE():number{
+    const operand:number=this.cpuBus.getValue(this.address);
+    this.regSf.setC((operand&1)!==0);
+    const shifted:number=operand>>1;
+    this.cpuBus.setValue(this.address,shifted);
+    this.regA=(this.regA^shifted)&0xff;
+    this.setZN(this.regA);
+    return 0;
+  }
+
+  // ROR 后 ADC
+  private RRA():number{
+    const operand:number=this.cpuBus.getValue(this.address);
+    const shifted:number=(operand>>1)|(this.regSf.getC()<<7);
+    this.cpuBus.setValue(this.address,shifted&0xff);
+    this.regSf.setC((operand&1)!==0);
+    this.ADC();
+    return 0;
+  }
+
+  // 写入 A & X，不影响标志
+  private SAX():number{
+    this.cpuBus.setValue(this.address,this.regA&this.regX);
+    return 0;
+  }
+
+  // LDA 后 TAX
+  private LAX():number{
+    this.regA=this.cpuBus.getValue(this.address);
+    this.regX=this.regA;
+    this.setZN(this.regA);
+    return 1;
+  }
+
+  // DEC 后 CMP
+  private DCP():number{
+    const operand:number=(this.cpuBus.getValue(this.address)-1)&0xff;
+    this.cpuBus.setValue(this.address,operand);
+    const diff:number=(this.regA-operand)&0xffff;
+    this.regSf.setC((diff&0x100)===0);
+    this.setZN(diff);
+    return 0;
+  }
+
+  // INC 后 SBC
+  private ISC():number{
+    const operand:number=(this.cpuBus.getValue(this.address)+1)&0xff;
+    this.cpuBus.setValue(this.address,operand);
+    this.SBC();
+    return 0;
+  }
+
+  // AND 后把 N 复制到 C
+  private AAC():number{
+    this.regA&=this.cpuBus.getValue(this.address);
+    this.setZN(this.regA);
+    this.regSf.setC((this.regA&0x80)!==0);
+    return 0;
+  }
+
+  // AND 后 LSR
+  private ASR():number{
+    this.regA&=this.cpuBus.getValue(this.address);
+    this.regSf.setC((this.regA&1)!==0);
+    this.regA>>=1;
+    this.setZN(this.regA);
+    return 0;
+  }
+
+  // AND 后 ROR，C=结果 bit6，V=bit6 xor bit5
+  private ARR():number{
+    const value:number=this.regA&this.cpuBus.getValue(this.address);
+    const result:number=(value>>1)|(this.regSf.getC()<<7);
+    this.regA=result&0xff;
+    this.setZN(this.regA);
+    this.regSf.setC((result&0x40)!==0);
+    this.regSf.setV(((result>>6)&1)!==((result>>5)&1));
+    return 0;
+  }
+
+  // 立即数同时写入 A 和 X。instr_test-v5 按这条稳定行为校验
+  private ATX():number{
+    this.regA=this.cpuBus.getValue(this.address);
+    this.regX=this.regA;
+    this.setZN(this.regA);
+    return 0;
+  }
+
+  // X = (A & X) - #imm，标志同 CMP
+  private AXS():number{
+    const operand:number=this.cpuBus.getValue(this.address);
+    const value:number=(this.regA&this.regX)-operand;
+    this.regX=value&0xff;
+    this.regSf.setC((value&0x100)===0);
+    this.setZN(this.regX);
+    return 0;
+  }
+
+  // (A | $EE) & X & #imm → A
+  private ANE():number{
+    this.regA=(this.regA|0xee)&this.regX&this.cpuBus.getValue(this.address);
+    this.setZN(this.regA);
+    return 0;
+  }
+
+  // 不稳定存储：值与 (地址高字节+1) 相与；跨页时地址高字节也被改写
+  private storeUnstable(value:number):void{
+    let addrHigh:number=(this.address>>8)&0xff;
+    const addrLow:number=this.address&0xff;
+    if(this.pageCrossed){
+      addrHigh&=value;
+    }
+    const stored:number=value&((this.operandHi+1)&0xff);
+    this.cpuBus.setValue((addrHigh<<8)|addrLow,stored);
+  }
+
+  private AHX():number{
+    this.storeUnstable(this.regA&this.regX);
+    return 0;
+  }
+
+  private SHY():number{
+    this.storeUnstable(this.regY);
+    return 0;
+  }
+
+  private SHX():number{
+    this.storeUnstable(this.regX);
+    return 0;
+  }
+
+  private TAS():number{
+    this.regSp=this.regA&this.regX;
+    this.storeUnstable(this.regSp);
+    return 0;
+  }
+
+  // A = X = SP = 内存 & SP
+  private LAS():number{
+    const value:number=this.cpuBus.getValue(this.address)&this.regSp;
+    this.regA=value;
+    this.regX=value;
+    this.regSp=value;
+    this.setZN(value);
+    return 1;
   }
 
   /** 

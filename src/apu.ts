@@ -1024,6 +1024,8 @@ export class Apu{
       this.frameCounter.setData(value);
       if (value&0x40){
         this.frameInterrupt = false;
+        // 禁止 frame IRQ 时必须松开 CPU 的 /IRQ，否则标志会一直挂着
+        this.cpuBus.IrqAcknowledge();
       }
       if (value&0x80){
         //启用五步模式，会立即产生一个时钟信号

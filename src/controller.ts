@@ -41,12 +41,11 @@ export class Controller{
     this.map=_map;
   }
 
-  //设置选通装填
+  //设置选通：strobe 为 1 时持续重载；1→0 时再锁存一次（兼容两种写法）
   public setStrobe(data:number):void{
-    const old:boolean=this.strobe;
+    const old=this.strobe;
     this.strobe=(data&1)===1;
-    //选通状态关闭时
-    if(old&&!this.strobe){
+    if(this.strobe||(old&&!this.strobe)){
       this.saveKeyState();
     }
   }
