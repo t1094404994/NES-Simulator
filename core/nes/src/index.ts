@@ -1,4 +1,10 @@
 export { Main } from './main';
+export { Nes, NES_WIDTH, NES_HEIGHT } from './nes';
+export type { NesFrame, NesAudioFrame, NesPlayer } from './nes';
+export { NesScreen, frameDestRect } from './screen';
+export type { NesAspect, NesPixelScale } from './screen';
+export { NesAudioOut } from './audioOut';
+export type { CreateAudioContext } from './audioOut';
 export { Cpu, CPU_CYCLE_PER_SEC, CPU_CYCLE_PER_FRAME } from './cpu';
 export { CpuBus } from './cpuBus';
 export { CpuRam } from './cpuRam';
@@ -8,5 +14,5 @@ export type { OAMSprite } from './ppuBus';
 export { NametableType } from './nametableType';
 export { CartridgeReader } from './cartridge';
 export type { Mapper } from './cartridge';
-export { Controller } from './controller';
+export { Controller, NesButton, PLAYER1_KEY_MAP, PLAYER2_KEY_MAP } from './controller';
 export { Apu, SAMPLE_PER_FRAME, SAMPLE_PER_SEC } from './apu';

@@ -1,23 +1,27 @@
 # NES-Simulator
 
-Web NES simulator library.
+NES 模拟器。模拟器在 `core/nes`，网页和小程序在 `apps`，游戏列表的类型和数据库分别在 `packages/shared`、`packages/db`。
 
 ## Scripts
 
-- `pnpm dev` — start playground
-- `pnpm build` — build library (ESM + UMD + types)
-- `pnpm typecheck` — TypeScript check
+- `pnpm dev` — playground
+- `pnpm build` — 打包模拟器库
+- `pnpm typecheck` — 各包类型检查
+- `pnpm server` — 游戏列表后台（默认 `http://127.0.0.1:8787`）
+- `pnpm web` — Next.js 网页壳
 
 ## Library
 
 ```ts
-import { Main } from 'nes-simulator';
+import { Nes } from 'nes-simulator';
 
-const nes = new Main();
-document.body.appendChild(nes.inputComponent());
-document.body.appendChild(nes.canvasComponent());
+const nes = new Nes();
+nes.onFrame = (frame) => {
+  // frame.rgba 为 256×240
+};
+nes.onAudio = (audio) => {
+  // audio.samples 为 44100Hz 单声道
+};
 ```
 
-## Playground
-
-Demo app lives in `playground/`. It imports the local library entry via the `nes-simulator` alias.
+浏览器演示仍可用 `Main`，playground 在 `core/nes/playground/`。

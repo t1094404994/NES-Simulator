@@ -2,6 +2,8 @@
  * npx tsx scripts/diag-rom.ts source/dq-cn.nes 400
  */
 import {readFileSync} from 'fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {CartridgeReader} from '../src/cartridge.ts';
 import {Cpu} from '../src/cpu.ts';
 import {CpuBus} from '../src/cpuBus.ts';
@@ -100,4 +102,5 @@ function run(path:string, frames:number):void{
   }
 }
 
-run(process.argv[2]||'source/dq-cn.nes', Number(process.argv[3]||300));
+const repoRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+run(process.argv[2]||path.join(repoRoot, 'source/dq-cn.nes'), Number(process.argv[3]||300));

@@ -1,0 +1,33 @@
+{
+  "name": "nes-simulator",
+  "version": "0.1.0",
+  "description": "nes simulator",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke:mappers": "tsx scripts/smoke-mappers.ts",
+    "test:nesdev": "tsx scripts/run-nesdev.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@typescript/typescript6": "^6.0.2",
+    "tsx": "^4.20.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-dts": "^5.1.2"
+  }
+}

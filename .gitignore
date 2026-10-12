@@ -1,5 +1,7 @@
 node_modules
 dist
+.next
+apps/server/data
 .pnpm-store
 .vscode/*
 !.vscode/settings.json

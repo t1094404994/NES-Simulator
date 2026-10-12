@@ -1,5 +1,5 @@
 //NES手柄
-enum NesKey{
+export enum NesButton{
   A,
   B,
   SELECT,
@@ -10,11 +10,35 @@ enum NesKey{
   RIGHT,
 }
 
+/** 主手柄默认键盘映射：J/L、WASD、Q/E */
+export const PLAYER1_KEY_MAP:Record<string,NesButton>={
+  KeyJ:NesButton.A,
+  KeyL:NesButton.B,
+  KeyA:NesButton.LEFT,
+  KeyD:NesButton.RIGHT,
+  KeyW:NesButton.UP,
+  KeyS:NesButton.DOWN,
+  KeyQ:NesButton.SELECT,
+  KeyE:NesButton.START,
+};
+
+/** 副手柄默认键盘映射：小键盘与方向键 */
+export const PLAYER2_KEY_MAP:Record<string,NesButton>={
+  Numpad1:NesButton.A,
+  Numpad3:NesButton.B,
+  ArrowLeft:NesButton.LEFT,
+  ArrowRight:NesButton.RIGHT,
+  ArrowUp:NesButton.UP,
+  ArrowDown:NesButton.DOWN,
+  Numpad4:NesButton.SELECT,
+  Numpad6:NesButton.START,
+};
+
 type Map={[key:string]:number};
 
 //左(主)手柄默认映射code
-const baseLeftMap:Map={KeyJ:NesKey.A,KeyL:NesKey.B,KeyA:NesKey.LEFT,KeyD:NesKey.RIGHT,KeyW:NesKey.UP,KeyS:NesKey.DOWN,KeyQ:NesKey.SELECT,KeyE:NesKey.START};
-const baseRightMap:Map={Numpad1:NesKey.A,Numpad3:NesKey.B,ArrowLeft:NesKey.LEFT,ArrowRight:NesKey.RIGHT,ArrowUp:NesKey.UP,ArrowDown:NesKey.DOWN,Numpad4:NesKey.SELECT,Numpad6:NesKey.START};
+const baseLeftMap:Map=PLAYER1_KEY_MAP;
+const baseRightMap:Map=PLAYER2_KEY_MAP;
 
 export class Controller{
   //选通状态
@@ -53,7 +77,7 @@ export class Controller{
   //保存当前按键状态
   private saveKeyState():void{
     this.keyState=0;
-    for(let i=NesKey.A;i<=NesKey.RIGHT;i++){
+    for(let i=NesButton.A;i<=NesButton.RIGHT;i++){
       if(this.curKeyState[i]){
         this.keyState|=(1<<i);
       }
@@ -65,7 +89,7 @@ export class Controller{
     let keyPressed:number;
     if(this.strobe){
       //选通状态下，只看按键A
-      keyPressed=this.curKeyState[NesKey.A]?1:0;
+      keyPressed=this.curKeyState[NesButton.A]?1:0;
     }else{
       //非选通状态 依次获取保存的按键状态
       keyPressed=this.keyState&1;
@@ -79,5 +103,13 @@ export class Controller{
     if(this.map[key]!==undefined){
       this.curKeyState[this.map[key]]=value;
     }
+  }
+
+  /** 直接写入某一颗 NES 按键，供虚拟按键等外部输入使用 */
+  public setButton(button:NesButton,pressed:boolean):void{
+    if(!this.curKeyState){
+      return;
+    }
+    this.curKeyState[button]=pressed;
   }
 }
