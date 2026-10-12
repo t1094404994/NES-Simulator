@@ -11,11 +11,55 @@ export const NES_HEIGHT = 240;
 
 export type NesPlayer = 1 | 2;
 
-/** 一帧画面。rgba 在下一次 onFrame 前有效，需要留存时请自行拷贝。 */
+export type NesFrameMode = 'full' | 'delta';
+
+/** 相对上一帧变化的 8×8 块。rgba 在下一次 onFrame 前有效。 */
+export interface NesFrameTile {
+  x: number;
+  y: number;
+  rgba: Uint8ClampedArray;
+}
+
+const TILE = 8;
+const TILE_COLS = NES_WIDTH / TILE;
+const TILE_ROWS = NES_HEIGHT / TILE;
+const TILE_COUNT = TILE_COLS * TILE_ROWS;
+const TILE_WORDS = TILE * TILE;
+const DIRTY_LIMIT = TILE_COUNT >> 1;
+const NO_TILES: readonly NesFrameTile[] = [];
+
+/** 一帧画面。rgba 和 tiles 在下一次 onFrame 前有效，需要留存时请自行拷贝。 */
 export interface NesFrame {
   width: number;
   height: number;
   rgba: Uint8ClampedArray;
+  /** 为 true 时宿主应使用整帧 rgba，tiles 为空。 */
+  keyframe: boolean;
+  /** delta 模式下发生变化的瓦片。 */
+  tiles: readonly NesFrameTile[];
+}
+
+function hashTile(src: Uint32Array, tx: number, ty: number): number {
+  let hash = 0x811c9dc5;
+  let word = (ty * TILE) * NES_WIDTH + tx * TILE;
+  for (let row = 0; row < TILE; row += 1) {
+    for (let col = 0; col < TILE; col += 1) {
+      hash ^= src[word + col];
+      hash = Math.imul(hash, 0x01000193);
+    }
+    word += NES_WIDTH;
+  }
+  return hash >>> 0;
+}
+
+function copyTile(src: Uint32Array, tx: number, ty: number, dst: Uint32Array, dstWord: number): void {
+  let srcWord = (ty * TILE) * NES_WIDTH + tx * TILE;
+  let dest = dstWord;
+  for (let row = 0; row < TILE; row += 1) {
+    dst.set(src.subarray(srcWord, srcWord + TILE), dest);
+    srcWord += NES_WIDTH;
+    dest += TILE;
+  }
 }
 
 /** 一帧模拟产生的单声道采样。samples 在下一次 onAudio 前有效。 */
@@ -69,8 +113,15 @@ export class Nes {
   private disposed = false;
   private frameHandle: { id: number; raf: boolean } | null = null;
   private frameRgba = new Uint8ClampedArray(NES_WIDTH * NES_HEIGHT * 4);
+  private frameWords = new Uint32Array(this.frameRgba.buffer);
   private audioScratch = new Float32Array(Math.ceil(SAMPLE_PER_FRAME));
   private romLoaded = false;
+  private frameMode: NesFrameMode = 'delta';
+  private frameSeen = false;
+  private prevHash = new Uint32Array(TILE_COUNT);
+  private changedRgba = new Uint8ClampedArray(TILE_COUNT * TILE * TILE * 4);
+  private changedWords = new Uint32Array(this.changedRgba.buffer);
+  private tiles: NesFrameTile[] = [];
 
   constructor() {
     this.cpubus = new CpuBus();
@@ -103,6 +154,32 @@ export class Nes {
     return this.speed;
   }
 
+  getFrameMode(): NesFrameMode {
+    return this.frameMode;
+  }
+
+  /**
+   * full 每次提交整帧。delta 只列出相对上一张已显示画面变化的 8×8 块，
+   * 变化超过一半时改为关键帧。默认 delta。
+   */
+  setFrameMode(mode: NesFrameMode): void {
+    this.frameMode = mode;
+    this.frameSeen = false;
+  }
+
+  /** 下一帧按整帧提交，供更换渲染器后补画面。 */
+  requestKeyframe(): void {
+    this.frameSeen = false;
+  }
+
+  /** 用当前 PPU 画面立刻回调一次。暂停时更换渲染器也会补上画面。 */
+  redraw(): void {
+    if (this.disposed || !this.romLoaded) {
+      return;
+    }
+    this.emitFrame();
+  }
+
   /** 模拟倍速。1 为原速，画面仍按 60fps 只提交最新一帧。 */
   setSpeed(multiplier: number): void {
     const speed = Number.isFinite(multiplier) ? Math.max(0.25, multiplier) : 1;
@@ -126,6 +203,7 @@ export class Nes {
     this.controllerL.reset(true);
     this.controllerR.reset(false);
     this.romLoaded = true;
+    this.frameSeen = false;
     this.nextLogicTime = 0;
     this.nextRenderTime = 0;
     return true;
@@ -222,12 +300,60 @@ export class Nes {
   private emitFrame(): void {
     const src = new Uint8Array(this.ppu.frameDataView.buffer);
     this.frameRgba.set(src.subarray(0, this.frameRgba.length));
-    if (this.onFrame) {
+    if (!this.onFrame) {
+      return;
+    }
+    if (this.frameMode === 'full' || !this.frameSeen) {
+      if (this.frameMode === 'delta') {
+        this.captureHashes();
+        this.frameSeen = true;
+      }
       this.onFrame({
         width: NES_WIDTH,
         height: NES_HEIGHT,
         rgba: this.frameRgba,
+        keyframe: true,
+        tiles: NO_TILES,
       });
+      return;
+    }
+
+    const words = this.frameWords;
+    let count = 0;
+    for (let ty = 0; ty < TILE_ROWS; ty += 1) {
+      for (let tx = 0; tx < TILE_COLS; tx += 1) {
+        const index = ty * TILE_COLS + tx;
+        const hash = hashTile(words, tx, ty);
+        if (hash === this.prevHash[index]) {
+          continue;
+        }
+        this.prevHash[index] = hash;
+        copyTile(words, tx, ty, this.changedWords, count * TILE_WORDS);
+        const tile = this.tiles[count] ?? { x: 0, y: 0, rgba: this.changedRgba.subarray(0, TILE_WORDS * 4) };
+        tile.x = tx;
+        tile.y = ty;
+        tile.rgba = this.changedRgba.subarray(count * TILE_WORDS * 4, (count + 1) * TILE_WORDS * 4);
+        this.tiles[count] = tile;
+        count += 1;
+      }
+    }
+    this.tiles.length = count;
+    const keyframe = count > DIRTY_LIMIT;
+    this.onFrame({
+      width: NES_WIDTH,
+      height: NES_HEIGHT,
+      rgba: this.frameRgba,
+      keyframe,
+      tiles: keyframe ? NO_TILES : this.tiles,
+    });
+  }
+
+  private captureHashes(): void {
+    const words = this.frameWords;
+    for (let ty = 0; ty < TILE_ROWS; ty += 1) {
+      for (let tx = 0; tx < TILE_COLS; tx += 1) {
+        this.prevHash[ty * TILE_COLS + tx] = hashTile(words, tx, ty);
+      }
     }
   }
 

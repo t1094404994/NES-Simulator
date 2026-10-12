@@ -5,11 +5,15 @@ import {
   Nes,
   NesAudioOut,
   NesButton,
-  NesScreen,
   PLAYER1_KEY_MAP,
   PLAYER2_KEY_MAP,
+  detectRenderers,
+  openPresenter,
   type NesAspect,
+  type NesFrame,
   type NesPixelScale,
+  type NesPresenter,
+  type NesRendererKind,
 } from 'nes-simulator';
 import { useEffect, useRef, useState } from 'react';
 import { VirtualPad } from './VirtualPad';
@@ -18,6 +22,12 @@ const ASPECT_RATIO: Record<NesAspect, string> = {
   '16:9': '16 / 9',
   '4:3': '4 / 3',
   native: '256 / 240',
+};
+
+const RENDERER_LABEL: Record<NesRendererKind, string> = {
+  webgpu: 'WebGPU',
+  webgl: 'WebGL',
+  '2d': 'Canvas 2D',
 };
 
 function toPixelScale(value: string): NesPixelScale {
@@ -31,14 +41,17 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nesRef = useRef<Nes | null>(null);
-  const screenRef = useRef<NesScreen | null>(null);
+  const screenRef = useRef<NesPresenter | null>(null);
   const audioRef = useRef<NesAudioOut | null>(null);
+  const drawRef = useRef<(frame: NesFrame) => void>(() => {});
   const [paused, setPaused] = useState(true);
   const [started, setStarted] = useState(false);
   const [speed, setSpeed] = useState('1');
   const [scale, setScale] = useState('fit');
   const [aspect, setAspect] = useState<NesAspect>('16:9');
   const [error, setError] = useState('');
+  const [renderer, setRenderer] = useState<NesRendererKind>('2d');
+  const [renderers, setRenderers] = useState<NesRendererKind[]>(['2d']);
   const speedRef = useRef(speed);
   const scaleRef = useRef(scale);
   const aspectRef = useRef(aspect);
@@ -47,34 +60,23 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
   aspectRef.current = aspect;
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const stage = stageRef.current;
-    if (!canvas || !stage) {
-      return;
-    }
-    const screen = new NesScreen(canvas);
+    const found = detectRenderers();
+    setRenderers(found);
+    setRenderer(found[0] ?? '2d');
+  }, []);
+
+  useEffect(() => {
     const audio = new NesAudioOut();
     const nes = new Nes();
-    screen.setAspect(aspectRef.current);
-    screen.setPixelScale(toPixelScale(scaleRef.current));
-    nes.onFrame = (frame) => screen.draw(frame);
+    nes.onFrame = (frame) => drawRef.current(frame);
     nes.onAudio = (frame) => audio.push(frame);
     nes.setSpeed(Number(speedRef.current));
     audio.setSpeed(Number(speedRef.current));
     if (!nes.loadRom(rom.slice(0))) {
       setError('无法识别的 ROM');
     }
-    screenRef.current = screen;
     audioRef.current = audio;
     nesRef.current = nes;
-
-    const resize = () => {
-      const rect = stage.getBoundingClientRect();
-      screen.resize(rect.width, rect.height);
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(stage);
 
     const onKey = (event: KeyboardEvent) => {
       if (event.repeat) {
@@ -105,11 +107,9 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
-      observer.disconnect();
       nes.dispose();
       audio.dispose();
       nesRef.current = null;
-      screenRef.current = null;
       audioRef.current = null;
       setStarted(false);
       setPaused(true);
@@ -117,11 +117,61 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
   }, [rom]);
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    const stage = stageRef.current;
+    const nes = nesRef.current;
+    if (!canvas || !stage || !nes) {
+      return;
+    }
+    let cancelled = false;
+    let presenter: NesPresenter | null = null;
+    let observer: ResizeObserver | null = null;
+
+    openPresenter(canvas, renderer).then((next) => {
+      if (cancelled) {
+        next.dispose();
+        return;
+      }
+      next.setAspect(aspectRef.current);
+      next.setPixelScale(toPixelScale(scaleRef.current));
+      presenter = next;
+      screenRef.current = next;
+      drawRef.current = (frame) => next.draw(frame);
+      const rect = stage.getBoundingClientRect();
+      next.resize(rect.width, rect.height);
+      nes.requestKeyframe();
+      nes.redraw();
+      observer = new ResizeObserver(() => {
+        const box = stage.getBoundingClientRect();
+        next.resize(box.width, box.height);
+        nes.redraw();
+      });
+      observer.observe(stage);
+    }).catch(() => {
+      if (!cancelled && renderer !== '2d') {
+        setRenderer('2d');
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      presenter?.dispose();
+      drawRef.current = () => {};
+      if (screenRef.current === presenter) {
+        screenRef.current = null;
+      }
+    };
+  }, [renderer]);
+
+  useEffect(() => {
     screenRef.current?.setAspect(aspect);
+    nesRef.current?.redraw();
   }, [aspect]);
 
   useEffect(() => {
     screenRef.current?.setPixelScale(toPixelScale(scale));
+    nesRef.current?.redraw();
   }, [scale]);
 
   function applySpeed(value: string) {
@@ -172,7 +222,7 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
         className="stage"
         style={{ aspectRatio: ASPECT_RATIO[aspect] }}
       >
-        <canvas ref={canvasRef} />
+        <canvas key={renderer} ref={canvasRef} />
         {started ? null : (
           <div className="stage-overlay">
             <Button size="3" onClick={begin}>开始</Button>
@@ -203,6 +253,17 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
               <Select.Item value="2">2x</Select.Item>
               <Select.Item value="3">3x</Select.Item>
               <Select.Item value="4">4x</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </Flex>
+        <Flex align="center" gap="2">
+          <Text size="2">渲染</Text>
+          <Select.Root value={renderer} onValueChange={(value) => setRenderer(value as NesRendererKind)}>
+            <Select.Trigger />
+            <Select.Content>
+              {renderers.map((kind) => (
+                <Select.Item key={kind} value={kind}>{RENDERER_LABEL[kind]}</Select.Item>
+              ))}
             </Select.Content>
           </Select.Root>
         </Flex>

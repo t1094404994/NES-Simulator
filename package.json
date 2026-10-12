@@ -12,9 +12,17 @@
     "test:nesdev": "pnpm --filter nes-simulator test:nesdev"
   },
   "devDependencies": {
-    "typescript-editor": "npm:typescript@6.0.3"
+    "typescript": "catalog:"
   },
   "pnpm": {
+    "packageExtensions": {
+      "next": {
+        "peerDependencies": {
+          "@types/react": "19.3.0",
+          "@types/react-dom": "19.3.0"
+        }
+      }
+    },
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "prisma",

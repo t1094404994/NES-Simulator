@@ -27,11 +27,22 @@ export function frameDestRect(
   };
 }
 
+export interface NesPresenter {
+  setAspect(aspect: NesAspect): void;
+  getAspect(): NesAspect;
+  setPixelScale(scale: NesPixelScale): void;
+  getPixelScale(): NesPixelScale;
+  getStageRatio(): number;
+  resize(cssWidth: number, cssHeight: number): void;
+  draw(frame: NesFrame): void;
+  dispose(): void;
+}
+
 /**
  * 把 NES 帧画到浏览器 canvas 上。
  * 舞台按宽高比留黑边，画面按整数倍像素居中，并关闭平滑缩放。
  */
-export class NesScreen {
+export class NesScreen implements NesPresenter {
   private aspect: NesAspect = '16:9';
   private pixelScale: NesPixelScale = 'fit';
   private stageWidth = 0;
@@ -94,8 +105,23 @@ export class NesScreen {
     }
   }
 
+  dispose(): void {}
+
   draw(frame: NesFrame): void {
-    this.imageData.data.set(frame.rgba);
+    const data = this.imageData.data;
+    if (frame.keyframe) {
+      data.set(frame.rgba);
+    } else {
+      for (const tile of frame.tiles) {
+        const src = tile.rgba;
+        const originX = tile.x * 8;
+        const originY = tile.y * 8;
+        for (let row = 0; row < 8; row += 1) {
+          const dst = ((originY + row) * NES_WIDTH + originX) * 4;
+          data.set(src.subarray(row * 32, row * 32 + 32), dst);
+        }
+      }
+    }
     this.sourceCtx.putImageData(this.imageData, 0, 0);
 
     const bitmapW = this.canvas.width || NES_WIDTH;

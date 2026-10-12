@@ -23,6 +23,9 @@ COPY packages/shared packages/shared
 RUN pnpm --filter @nes/db exec prisma generate
 
 FROM node:24-bookworm-slim AS server
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=server-src /app /app
 ENV NODE_ENV=production

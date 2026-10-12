@@ -1,8 +1,12 @@
 export { Main } from './main';
 export { Nes, NES_WIDTH, NES_HEIGHT } from './nes';
-export type { NesFrame, NesAudioFrame, NesPlayer } from './nes';
+export type { NesFrame, NesFrameTile, NesFrameMode, NesAudioFrame, NesPlayer } from './nes';
 export { NesScreen, frameDestRect } from './screen';
-export type { NesAspect, NesPixelScale } from './screen';
+export type { NesAspect, NesPixelScale, NesPresenter } from './screen';
+export { NesGlScreen } from './glScreen';
+export { NesGpuScreen } from './gpuScreen';
+export { detectRenderers, openPresenter } from './present';
+export type { NesRendererKind } from './present';
 export { NesAudioOut } from './audioOut';
 export type { CreateAudioContext } from './audioOut';
 export { Cpu, CPU_CYCLE_PER_SEC, CPU_CYCLE_PER_FRAME } from './cpu';

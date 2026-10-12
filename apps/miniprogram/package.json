@@ -34,7 +34,7 @@
     "@types/react": "^18.3.18",
     "babel-loader": "^9.2.1",
     "babel-preset-taro": "4.1.7",
-    "typescript": "^5.9.2",
+    "typescript": "catalog:",
     "webpack": "5.91.0"
   }
 }
