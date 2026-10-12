@@ -9,6 +9,9 @@ NES 模拟器。模拟器在 `core/nes`，网页和小程序在 `apps`，游戏�
 - `pnpm typecheck` — 各包类型检查
 - `pnpm server` — 游戏列表后台（默认 `http://127.0.0.1:8787`）
 - `pnpm web` — Next.js 网页壳
+- `docker compose up --build` — 同时启动后台和网页。游戏数据在卷 `server-data`。管理令牌用环境变量 `ADMIN_TOKEN`（默认 `dev-admin-token`）。浏览器直接访问后台，改地址时设置 `NEXT_PUBLIC_API_BASE` 后重新构建网页镜像。
+
+后台用 Prisma 和 SQLite，库文件在 `apps/server/data/games.db`（容器里是 `/data/games.db`）。启动时会把仓库 `source` 目录中的 `.nes` 写入数据库；已经导入过的文件会跳过。
 
 ## Library
 

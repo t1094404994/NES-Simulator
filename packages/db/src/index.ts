@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { toGameItem, type GameItem } from '@nes/shared';
-import Database from 'better-sqlite3';
+import { PrismaClient } from '../generated/prisma/client';
+import { migrateDatabase } from './migrate';
+import { seedSourceGames, type SeedResult } from './seed';
 
-const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const COVER_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -23,15 +25,8 @@ export class GameStoreError extends Error {
   }
 }
 
-interface GameRow {
-  id: string;
-  title: string;
-  cover_ext: string;
-  created_at: number;
-}
-
 export interface StoredGame extends GameItem {
-  coverExt: string;
+  coverExt: string | null;
 }
 
 export function detectCoverExt(mime: string, data: Buffer): string | null {
@@ -65,58 +60,77 @@ export function isInesRom(data: Buffer): boolean {
   return data.length >= 16 && data[0] === 0x4e && data[1] === 0x45 && data[2] === 0x53 && data[3] === 0x1a;
 }
 
-function toStored(row: GameRow): StoredGame {
+function toStored(row: { id: string; title: string; coverExt: string | null; createdAt: Date }): StoredGame {
   return {
-    ...toGameItem({ id: row.id, title: row.title, createdAt: row.created_at }),
-    coverExt: row.cover_ext,
+    ...toGameItem({ id: row.id, title: row.title, createdAt: row.createdAt.getTime() }),
+    coverExt: row.coverExt,
   };
 }
 
-/** SQLite 游戏列表，封面和 ROM 放在 dataDir/files 下。 */
+/** Prisma + SQLite。封面和 ROM 存在游戏行里。 */
 export class GameStore {
-  private db: Database.Database;
-  private filesDir: string;
+  private prisma: PrismaClient | null = null;
+  readonly databaseUrl: string;
 
-  constructor(dataDir: string) {
+  constructor(private readonly dataDir: string) {
     mkdirSync(dataDir, { recursive: true });
-    this.filesDir = path.join(dataDir, 'files');
-    mkdirSync(this.filesDir, { recursive: true });
-    this.db = new Database(path.join(dataDir, 'games.db'));
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS games (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        cover_ext TEXT NOT NULL,
-        created_at INTEGER NOT NULL
-      )
-    `);
+    this.databaseUrl = process.env.DATABASE_URL || `file:${path.join(dataDir, 'games.db')}`;
   }
 
   async ready(): Promise<void> {
-    await mkdir(this.filesDir, { recursive: true });
+    await migrateDatabase(this.databaseUrl, this.dataDir);
+    this.prisma = new PrismaClient({
+      adapter: new PrismaBetterSqlite3({ url: this.databaseUrl }),
+    });
   }
 
-  list(): StoredGame[] {
-    const rows = this.db
-      .prepare('SELECT id, title, cover_ext, created_at FROM games ORDER BY created_at DESC')
-      .all() as GameRow[];
+  private db(): PrismaClient {
+    if (!this.prisma) {
+      throw new GameStoreError('store is not ready', 500);
+    }
+    return this.prisma;
+  }
+
+  async seedFromDirectory(sourceDir: string): Promise<SeedResult> {
+    return seedSourceGames(this.db(), sourceDir);
+  }
+
+  async list(): Promise<StoredGame[]> {
+    const rows = await this.db().game.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, title: true, coverExt: true, createdAt: true },
+    });
     return rows.map(toStored);
   }
 
-  get(id: string): StoredGame | undefined {
+  async get(id: string): Promise<StoredGame | null> {
     this.assertId(id);
-    const row = this.db
-      .prepare('SELECT id, title, cover_ext, created_at FROM games WHERE id = ?')
-      .get(id) as GameRow | undefined;
-    return row ? toStored(row) : undefined;
+    const row = await this.db().game.findUnique({
+      where: { id },
+      select: { id: true, title: true, coverExt: true, createdAt: true },
+    });
+    return row ? toStored(row) : null;
   }
 
-  coverPath(game: StoredGame): string {
-    return path.join(this.filesDir, game.id, `cover.${game.coverExt}`);
+  async readCover(id: string): Promise<{ ext: string; data: Buffer } | null> {
+    this.assertId(id);
+    const row = await this.db().game.findUnique({
+      where: { id },
+      select: { cover: true, coverExt: true },
+    });
+    if (!row?.cover || !row.coverExt) {
+      return null;
+    }
+    return { ext: row.coverExt, data: Buffer.from(row.cover) };
   }
 
-  romPath(game: StoredGame): string {
-    return path.join(this.filesDir, game.id, 'rom.nes');
+  async readRom(id: string): Promise<Buffer | null> {
+    this.assertId(id);
+    const row = await this.db().game.findUnique({
+      where: { id },
+      select: { rom: true },
+    });
+    return row ? Buffer.from(row.rom) : null;
   }
 
   async create(input: { title: string; cover: Buffer; coverMime: string; rom: Buffer }): Promise<StoredGame> {
@@ -133,19 +147,16 @@ export class GameStore {
     }
 
     const id = randomUUID();
-    const dir = path.join(this.filesDir, id);
-    await mkdir(dir, { recursive: true });
-    try {
-      await writeFile(path.join(dir, `cover.${coverExt}`), input.cover);
-      await writeFile(path.join(dir, 'rom.nes'), input.rom);
-      this.db
-        .prepare('INSERT INTO games (id, title, cover_ext, created_at) VALUES (?, ?, ?, ?)')
-        .run(id, title, coverExt, Date.now());
-    } catch (error) {
-      await rm(dir, { recursive: true, force: true });
-      throw error;
-    }
-    const created = this.get(id);
+    await this.db().game.create({
+      data: {
+        id,
+        title,
+        cover: new Uint8Array(input.cover),
+        coverExt,
+        rom: new Uint8Array(input.rom),
+      },
+    });
+    const created = await this.get(id);
     if (!created) {
       throw new GameStoreError('failed to save game', 500);
     }
@@ -153,12 +164,11 @@ export class GameStore {
   }
 
   async remove(id: string): Promise<StoredGame> {
-    const game = this.get(id);
+    const game = await this.get(id);
     if (!game) {
       throw new GameStoreError('not found', 404);
     }
-    this.db.prepare('DELETE FROM games WHERE id = ?').run(id);
-    await rm(path.join(this.filesDir, id), { recursive: true, force: true });
+    await this.db().game.delete({ where: { id } });
     return game;
   }
 
@@ -168,3 +178,5 @@ export class GameStore {
     }
   }
 }
+
+export type { SeedResult };

@@ -7,10 +7,14 @@ const libraryEntry = path.resolve(rootDir, '../../core/nes/src/index.ts');
 const sharedEntry = path.resolve(rootDir, '../../packages/shared/src/index.ts');
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
+  outputFileTracingRoot: path.resolve(rootDir, '../..'),
   transpilePackages: ['nes-simulator', '@nes/shared'],
   webpack: (config) => {
-    config.resolve.alias['nes-simulator'] = libraryEntry;
-    config.resolve.alias['@nes/shared'] = sharedEntry;
+    const alias = config.resolve.alias ?? {};
+    config.resolve.alias = alias;
+    alias['nes-simulator'] = libraryEntry;
+    alias['@nes/shared'] = sharedEntry;
     return config;
   },
   turbopack: {
