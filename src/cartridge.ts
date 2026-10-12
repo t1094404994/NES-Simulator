@@ -30,6 +30,8 @@ export interface Mapper{
   notifyA12Rise?:()=>void,
   /** 绑定 IRQ 置位 / 应答回调 */
   bindIrq?:(tryIrq:()=>void,clearIrq?:()=>void)=>void,
+  /** 扩展区 $4020–$5FFF 写入（如晶科泰 MMC3 的 $5000 外层 PRG） */
+  cpuWriteExp?:WriteData,
   onFrameEnd?:()=>void,
 }
 

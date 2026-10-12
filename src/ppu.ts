@@ -296,6 +296,7 @@ export class Ppu{
     this.frameFinished=-1;
     this.suppressVblank=false;
     this.nmiDelayDots=0;
+    this.oamAddress=0;
     //256*240实际渲染像素, 每个像素包括R,G,B,A值(nes本身没有A值,这里加上方便拓展)
     this.frameData=new ArrayBuffer(256*240*4);
     this.frameDataView=new DataView(this.frameData);
@@ -423,6 +424,7 @@ export class Ppu{
   //写入精灵数据
   public writeOamdata(value:number):void{
     this.oamram.setData(this.oamAddress,value);
+    this.oamAddress=(this.oamAddress+1)&0xff;
   }
   //获取OAM精灵数据
   public getOamdata():number{

@@ -189,7 +189,8 @@ export class CpuBus{
       this.apu.setData(busAddress-0x4000,value);
     }
     else if(busAddress >= 0x4018 && busAddress < 0x6000){
-      //
+      // 扩展寄存器（如晶科泰 MMC3 $5000 外层 PRG）
+      this.cartridgeReader?.mapper?.cpuWriteExp?.(busAddress,value);
     }
     //扩展RAM
     else if(busAddress>=0x6000&&busAddress<0x8000){

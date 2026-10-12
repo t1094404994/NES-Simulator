@@ -32,6 +32,9 @@ export class Mapper4 implements Mapper{
 
   private prgBankCount:number;
   private chrBankCount1k:number;
+  /** 晶科泰 1MB MMC3：$5000 bit2 选择高 512KB；未写入前保持标准 MMC3 */
+  private prgOuter:number;
+  private useOuterBanking:boolean;
 
   constructor(cartridge:CartridgeReader,hasVrom:boolean){
     this.tryIrq=null;
@@ -69,6 +72,8 @@ export class Mapper4 implements Mapper{
     this.irqReload=false;
     this.irqEnable=false;
     this.nametableMirror=NametableType.VIRTICAL;
+    this.prgOuter=0;
+    this.useOuterBanking=false;
 
     this.prgBankCount=Math.max(2,this.cartridge.romNum*2);
     this.chrBankCount1k=hasVrom?Math.max(8,this.cartridge.vromNum*8):8;
@@ -107,9 +112,36 @@ export class Mapper4 implements Mapper{
     return b*0x400+(offset&0x3ff);
   }
 
+  /** 晶科泰：$5000=0/4 选择 512KB 窗口；标准 MMC3 不写此寄存器 */
+  public cpuWriteExp(busAddress:number,value:number):void{
+    if((busAddress&0xf000)!==0x5000){
+      return;
+    }
+    this.useOuterBanking=true;
+    this.prgOuter=(value&0x04)?0x40:0;
+  }
+
+  private effectivePrgBank(bank:number):number{
+    if(this.useOuterBanking){
+      return this.prgOuter|(bank&0x3f);
+    }
+    return bank;
+  }
+
+  private prgFixedLast():number{
+    if(this.useOuterBanking){
+      return this.prgOuter|0x3f;
+    }
+    return this.prgBankCount-1;
+  }
+
+  private prgFixedSecondLast():number{
+    return this.prgFixedLast()-1;
+  }
+
   public cpuReadRpg(busAddress:number):number{
-    const last=this.prgBankCount-1;
-    const secondLast=this.prgBankCount-2;
+    const last=this.prgFixedLast();
+    const secondLast=this.prgFixedSecondLast();
     let bank:number;
     if(busAddress<0xa000){
       bank=this.prgMode===0?this.bankRegs[6]:secondLast;
@@ -120,7 +152,7 @@ export class Mapper4 implements Mapper{
     }else{
       bank=last;
     }
-    return this.rpgDataView.getUint8(this.mapPrg8k(bank,busAddress));
+    return this.rpgDataView.getUint8(this.mapPrg8k(this.effectivePrgBank(bank),busAddress));
   }
 
   public cpuWriteRpg(busAddress:number,value:number):void{

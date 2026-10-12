@@ -131,6 +131,14 @@ function smokeMapper4ChrRam():void{
   m.cpuWriteRpg(0x8000,0x06);
   m.cpuWriteRpg(0x8001,64);
   assert(m.cpuReadRpg(0x8000)===32,'m4 prg bank64'); // 8KB bank64 = 16KB index 32
+  // 晶科泰 $5000 外层：bit2=1 时 6bit MMC3 bank 映射到高 512KB
+  m.cpuWriteExp?.(0x5000,0x04);
+  m.cpuWriteRpg(0x8000,0x06);
+  m.cpuWriteRpg(0x8001,0x04); // → effective bank 0x44 = 68 → 16KB index 34
+  assert(m.cpuReadRpg(0x8000)===34,'m4 prg outer $5000');
+  m.cpuWriteExp?.(0x5000,0x00);
+  m.cpuWriteRpg(0x8001,0x04); // → bank 4 → 16KB index 2
+  assert(m.cpuReadRpg(0x8000)===2,'m4 prg outer clear');
   console.log('OK mapper 4 CHR-RAM + 1MB PRG');
 }
 
