@@ -1,0 +1,18 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Game {
+  id         String   @id
+  title      String
+  cover      Bytes?
+  coverExt   String?
+  rom        Bytes
+  sourceName String?  @unique
+  createdAt  DateTime @default(now())
+}

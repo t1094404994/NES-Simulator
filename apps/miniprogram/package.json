@@ -1,0 +1,40 @@
+{
+  "name": "nes-miniprogram",
+  "private": true,
+  "description": "NES simulator WeChat mini program shell",
+  "scripts": {
+    "dev:weapp": "taro build --type weapp --watch",
+    "build:weapp": "taro build --type weapp"
+  },
+  "browserslist": [
+    "last 3 versions",
+    "Android >= 4.1",
+    "ios >= 8"
+  ],
+  "dependencies": {
+    "@tarojs/components": "4.1.7",
+    "@tarojs/helper": "4.1.7",
+    "@tarojs/plugin-framework-react": "4.1.7",
+    "@tarojs/plugin-platform-weapp": "4.1.7",
+    "@tarojs/react": "4.1.7",
+    "@tarojs/runtime": "4.1.7",
+    "@tarojs/shared": "4.1.7",
+    "@tarojs/taro": "4.1.7",
+    "@nes/shared": "workspace:*",
+    "nes-simulator": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-react": "^7.27.1",
+    "@tarojs/cli": "4.1.7",
+    "@tarojs/taro-loader": "4.1.7",
+    "@tarojs/webpack5-runner": "4.1.7",
+    "@types/react": "^18.3.18",
+    "babel-loader": "^9.2.1",
+    "babel-preset-taro": "4.1.7",
+    "typescript": "catalog:",
+    "webpack": "5.91.0"
+  }
+}
