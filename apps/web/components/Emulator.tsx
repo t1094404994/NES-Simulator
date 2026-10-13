@@ -15,13 +15,14 @@ import {
   type NesPresenter,
   type NesRendererKind,
 } from 'nes-simulator';
-import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { VirtualPad } from './VirtualPad';
 
-const ASPECT_RATIO: Record<NesAspect, string> = {
-  '16:9': '16 / 9',
-  '4:3': '4 / 3',
-  native: '256 / 240',
+const ASPECT_PARTS: Record<NesAspect, readonly [number, number]> = {
+  '16:9': [16, 9],
+  '4:3': [4, 3],
+  native: [256, 240],
 };
 
 const RENDERER_LABEL: Record<NesRendererKind, string> = {
@@ -37,6 +38,15 @@ function toPixelScale(value: string): NesPixelScale {
   return Number(value) as NesPixelScale;
 }
 
+function stageStyle(aspect: NesAspect): CSSProperties {
+  const [width, height] = ASPECT_PARTS[aspect];
+  return {
+    aspectRatio: `${width} / ${height}`,
+    '--ar-w': width,
+    '--ar-h': height,
+  } as CSSProperties;
+}
+
 export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -44,6 +54,9 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
   const screenRef = useRef<NesPresenter | null>(null);
   const audioRef = useRef<NesAudioOut | null>(null);
   const drawRef = useRef<(frame: NesFrame) => void>(() => {});
+  const menuOpenRef = useRef(false);
+  const [shell, setShell] = useState<HTMLDivElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [paused, setPaused] = useState(true);
   const [started, setStarted] = useState(false);
   const [speed, setSpeed] = useState('1');
@@ -58,6 +71,19 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
   speedRef.current = speed;
   scaleRef.current = scale;
   aspectRef.current = aspect;
+  menuOpenRef.current = menuOpen;
+
+  useEffect(() => {
+    const { body, documentElement } = document;
+    const prevBody = body.style.overflow;
+    const prevHtml = documentElement.style.overflow;
+    body.style.overflow = 'hidden';
+    documentElement.style.overflow = 'hidden';
+    return () => {
+      body.style.overflow = prevBody;
+      documentElement.style.overflow = prevHtml;
+    };
+  }, []);
 
   useEffect(() => {
     const found = detectRenderers();
@@ -79,7 +105,7 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
     nesRef.current = nes;
 
     const onKey = (event: KeyboardEvent) => {
-      if (event.repeat) {
+      if (event.repeat || menuOpenRef.current) {
         return;
       }
       const target = event.target as HTMLElement | null;
@@ -174,6 +200,19 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
     nesRef.current?.redraw();
   }, [scale]);
 
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
   function applySpeed(value: string) {
     setSpeed(value);
     const multiplier = Number(value);
@@ -213,80 +252,108 @@ export function Emulator({ rom, title }: { rom: ArrayBuffer; title: string }) {
     }
   }
 
+  const pauseLabel = !started ? '开始' : paused ? '继续' : '暂停';
+
   return (
-    <Flex direction="column" gap="3" p="4">
-      <Text size="5" weight="bold">{title}</Text>
-      {error ? <Text color="red">{error}</Text> : null}
-      <div
-        ref={stageRef}
-        className="stage"
-        style={{ aspectRatio: ASPECT_RATIO[aspect] }}
-      >
-        <canvas key={renderer} ref={canvasRef} />
-        {started ? null : (
-          <div className="stage-overlay">
-            <Button size="3" onClick={begin}>开始</Button>
+    <div className="emulator" ref={setShell}>
+      <div className="play-layout">
+        <div className="stage-fit">
+          <div ref={stageRef} className="stage" style={stageStyle(aspect)}>
+            <canvas key={renderer} ref={canvasRef} />
+            {error ? (
+              <div className="stage-overlay">
+                <Text color="red">{error}</Text>
+              </div>
+            ) : started ? null : (
+              <div className="stage-overlay">
+                <Button size="3" onClick={begin}>开始</Button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+        <VirtualPad
+          onButton={(button: NesButton, pressed: boolean) => {
+            nesRef.current?.setButton(1, button, pressed);
+          }}
+        />
       </div>
-      <Flex gap="3" wrap="wrap" align="center" justify="center">
-        <Button onClick={togglePause}>{paused ? '继续' : '暂停'}</Button>
-        <Flex align="center" gap="2">
-          <Text size="2">倍速</Text>
-          <Select.Root value={speed} onValueChange={applySpeed}>
-            <Select.Trigger />
-            <Select.Content>
-              <Select.Item value="1">1x</Select.Item>
-              <Select.Item value="2">2x</Select.Item>
-              <Select.Item value="3">3x</Select.Item>
-              <Select.Item value="4">4x</Select.Item>
-            </Select.Content>
-          </Select.Root>
-        </Flex>
-        <Flex align="center" gap="2">
-          <Text size="2">像素</Text>
-          <Select.Root value={scale} onValueChange={setScale}>
-            <Select.Trigger />
-            <Select.Content>
-              <Select.Item value="fit">适应</Select.Item>
-              <Select.Item value="1">1x</Select.Item>
-              <Select.Item value="2">2x</Select.Item>
-              <Select.Item value="3">3x</Select.Item>
-              <Select.Item value="4">4x</Select.Item>
-            </Select.Content>
-          </Select.Root>
-        </Flex>
-        <Flex align="center" gap="2">
-          <Text size="2">渲染</Text>
-          <Select.Root value={renderer} onValueChange={(value) => setRenderer(value as NesRendererKind)}>
-            <Select.Trigger />
-            <Select.Content>
-              {renderers.map((kind) => (
-                <Select.Item key={kind} value={kind}>{RENDERER_LABEL[kind]}</Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
-        </Flex>
-        <Flex align="center" gap="2">
-          <Text size="2">画面</Text>
-          <Select.Root value={aspect} onValueChange={(value) => setAspect(value as NesAspect)}>
-            <Select.Trigger />
-            <Select.Content>
-              <Select.Item value="16:9">16:9</Select.Item>
-              <Select.Item value="4:3">4:3</Select.Item>
-              <Select.Item value="native">原始</Select.Item>
-            </Select.Content>
-          </Select.Root>
-        </Flex>
-      </Flex>
-      <Text size="1" color="gray" align="center">
-        键盘：J / L 为 A / B，W A S D 方向，Q / E 为 Select / Start
-      </Text>
-      <VirtualPad
-        onButton={(button: NesButton, pressed: boolean) => {
-          nesRef.current?.setButton(1, button, pressed);
-        }}
-      />
-    </Flex>
+      <button
+        type="button"
+        className="menu-toggle"
+        aria-expanded={menuOpen}
+        aria-controls="play-drawer"
+        onClick={() => setMenuOpen((open) => !open)}
+      >
+        菜单
+      </button>
+      {menuOpen ? (
+        <button
+          type="button"
+          className="drawer-backdrop"
+          aria-label="关闭菜单"
+          onClick={() => setMenuOpen(false)}
+        />
+      ) : null}
+      {menuOpen ? (
+        <aside id="play-drawer" className="drawer" aria-label="游戏选项">
+          <Text size="5" weight="bold">{title}</Text>
+          {error ? <Text color="red">{error}</Text> : null}
+          <Button onClick={togglePause}>{pauseLabel}</Button>
+          <Flex direction="column" gap="1">
+            <Text size="2" color="gray">倍速</Text>
+            <Select.Root value={speed} onValueChange={applySpeed}>
+              <Select.Trigger style={{ width: '100%' }} />
+              <Select.Content container={shell ?? undefined} position="popper">
+                <Select.Item value="1">1x</Select.Item>
+                <Select.Item value="2">2x</Select.Item>
+                <Select.Item value="3">3x</Select.Item>
+                <Select.Item value="4">4x</Select.Item>
+              </Select.Content>
+            </Select.Root>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text size="2" color="gray">像素</Text>
+            <Select.Root value={scale} onValueChange={setScale}>
+              <Select.Trigger style={{ width: '100%' }} />
+              <Select.Content container={shell ?? undefined} position="popper">
+                <Select.Item value="fit">适应</Select.Item>
+                <Select.Item value="1">1x</Select.Item>
+                <Select.Item value="2">2x</Select.Item>
+                <Select.Item value="3">3x</Select.Item>
+                <Select.Item value="4">4x</Select.Item>
+              </Select.Content>
+            </Select.Root>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text size="2" color="gray">渲染</Text>
+            <Select.Root value={renderer} onValueChange={(value) => setRenderer(value as NesRendererKind)}>
+              <Select.Trigger style={{ width: '100%' }} />
+              <Select.Content container={shell ?? undefined} position="popper">
+                {renderers.map((kind) => (
+                  <Select.Item key={kind} value={kind}>{RENDERER_LABEL[kind]}</Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text size="2" color="gray">画面</Text>
+            <Select.Root value={aspect} onValueChange={(value) => setAspect(value as NesAspect)}>
+              <Select.Trigger style={{ width: '100%' }} />
+              <Select.Content container={shell ?? undefined} position="popper">
+                <Select.Item value="16:9">16:9</Select.Item>
+                <Select.Item value="4:3">4:3</Select.Item>
+                <Select.Item value="native">原始</Select.Item>
+              </Select.Content>
+            </Select.Root>
+          </Flex>
+          <Text size="2" color="gray">
+            键盘：J / L 为 A / B，W A S D 方向，Q / E 为 Select / Start
+          </Text>
+          <Button asChild variant="soft" color="gray">
+            <Link href="/">返回首页</Link>
+          </Button>
+        </aside>
+      ) : null}
+    </div>
   );
 }

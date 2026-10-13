@@ -10,10 +10,112 @@ a {
   text-decoration: none;
 }
 
+.emulator {
+  --pad: clamp(36px, 12vmin, 72px);
+  --pad-gap: clamp(4px, 1.2vmin, 8px);
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  height: 100dvh;
+  background: #111;
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+}
+
+.play-layout {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "dpad stage actions"
+    "system system system";
+  gap: clamp(6px, 1.5vmin, 16px);
+  padding:
+    calc(48px + env(safe-area-inset-top))
+    calc(12px + env(safe-area-inset-right))
+    calc(8px + env(safe-area-inset-bottom))
+    calc(12px + env(safe-area-inset-left));
+}
+
+.menu-toggle {
+  position: absolute;
+  z-index: 5;
+  top: calc(8px + env(safe-area-inset-top));
+  left: calc(8px + env(safe-area-inset-left));
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #5a4632;
+  background: #2a2118;
+  color: #f5efe6;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.menu-toggle:active {
+  background: #c2410c;
+}
+
+.drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.drawer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  width: min(320px, calc(100% - 72px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: auto;
+  padding:
+    calc(20px + env(safe-area-inset-top))
+    calc(16px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom))
+    16px;
+  background: #1c1814;
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+  touch-action: pan-y;
+  user-select: text;
+}
+
+.emulator .rt-SelectContent,
+.emulator .rt-PopperContent,
+.emulator [data-radix-popper-content-wrapper] {
+  z-index: 6;
+}
+
+.stage-fit {
+  grid-area: stage;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
+
 .stage {
   position: relative;
-  width: min(100%, 960px);
-  margin: 0 auto;
+  max-width: 100%;
+  max-height: 100%;
+  width: min(100cqw, calc(100cqh * var(--ar-w) / var(--ar-h)));
+  height: min(100cqh, calc(100cqw * var(--ar-h) / var(--ar-w)));
   background: #000;
 }
 
@@ -33,26 +135,21 @@ a {
 }
 
 .pad {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 12px;
-  align-items: center;
-  width: min(100%, 960px);
-  margin: 16px auto 0;
-  user-select: none;
-  touch-action: none;
+  display: contents;
 }
 
 .dpad {
+  grid-area: dpad;
+  justify-self: center;
+  align-self: center;
   display: grid;
   grid-template-areas:
     ". up ."
     "left . right"
     ". down .";
-  grid-template-columns: 56px 56px 56px;
-  grid-template-rows: 56px 56px 56px;
-  gap: 6px;
-  justify-content: start;
+  grid-template-columns: var(--pad) var(--pad) var(--pad);
+  grid-template-rows: var(--pad) var(--pad) var(--pad);
+  gap: var(--pad-gap);
 }
 
 .pad-up { grid-area: up; }
@@ -61,21 +158,26 @@ a {
 .pad-right { grid-area: right; }
 
 .menu-keys {
+  grid-area: system;
   display: flex;
-  gap: 8px;
+  gap: clamp(8px, 2vmin, 16px);
   align-items: center;
+  justify-content: center;
 }
 
 .action-keys {
+  grid-area: actions;
+  justify-self: center;
+  align-self: center;
   display: flex;
-  gap: 12px;
-  align-items: flex-end;
-  justify-content: flex-end;
+  gap: clamp(10px, 2vmin, 18px);
+  align-items: center;
+  justify-content: center;
 }
 
 .pad-btn {
-  width: 56px;
-  height: 56px;
+  width: var(--pad);
+  height: var(--pad);
   border-radius: 12px;
   border: 1px solid #5a4632;
   background: #2a2118;
@@ -83,24 +185,36 @@ a {
   font: inherit;
   font-weight: 700;
   touch-action: none;
+  cursor: pointer;
 }
 
 .pad-btn.small {
-  width: 72px;
-  height: 36px;
-  border-radius: 18px;
-  font-size: 12px;
+  width: calc(var(--pad) * 1.35);
+  height: calc(var(--pad) * 0.72);
+  border-radius: 999px;
+  font-size: clamp(18px, 4vmin, 28px);
 }
 
 .pad-btn.round {
-  width: 68px;
-  height: 68px;
+  width: calc(var(--pad) * 1.2);
+  height: calc(var(--pad) * 1.2);
   border-radius: 50%;
-  font-size: 18px;
+  font-size: clamp(16px, 3.2vmin, 24px);
 }
 
 .pad-btn:active {
   background: #c2410c;
+}
+
+@media (orientation: portrait) {
+  .play-layout {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "stage stage"
+      "dpad actions"
+      "system system";
+  }
 }
 
 .cover {

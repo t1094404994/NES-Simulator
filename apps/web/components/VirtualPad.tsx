@@ -47,8 +47,8 @@ export function VirtualPad({ onButton }: VirtualPadProps) {
         <button type="button" className="pad-btn pad-down" {...hold(NesButton.DOWN, onButton)}>下</button>
       </div>
       <div className="menu-keys">
-        <button type="button" className="pad-btn small" {...hold(NesButton.SELECT, onButton)}>Select</button>
-        <button type="button" className="pad-btn small" {...hold(NesButton.START, onButton)}>Start</button>
+        <button type="button" className="pad-btn small" aria-label="Select" {...hold(NesButton.SELECT, onButton)}>−</button>
+        <button type="button" className="pad-btn small" aria-label="Start" {...hold(NesButton.START, onButton)}>+</button>
       </div>
       <div className="action-keys">
         <button type="button" className="pad-btn round" {...hold(NesButton.B, onButton)}>B</button>
