@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="NES">
+  <rect width="32" height="32" rx="8" fill="#1a120e"/>
+  <rect x="2" y="9" width="28" height="14" rx="7" fill="#4a3f36"/>
+  <rect x="3.5" y="10.5" width="25" height="11" rx="5.5" fill="#2c241e"/>
+  <path fill="#f3eadf" d="M8.2 14.1h2.1v-2.1h2.2v2.1h2.1v2.2h-2.1v2.1h-2.2v-2.1H8.2z"/>
+  <circle cx="21.2" cy="17.6" r="2.15" fill="#c2410c"/>
+  <circle cx="25.2" cy="14.6" r="2.15" fill="#f3eadf"/>
+</svg>
