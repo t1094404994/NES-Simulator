@@ -1,16 +1,27 @@
 'use client';
 
-import { Flex, Text } from '@radix-ui/themes';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Emulator } from '@/components/Emulator';
+import { Loading } from '@/components/Loading';
 import { api, type GameItem } from '@/lib/api';
+import { errorHref, readRomError } from '@/lib/rom';
+
+function loadMessage(err: unknown): string {
+  if (err instanceof Error) {
+    if (!err.message || err.message === 'Failed to fetch') {
+      return '无法连接服务器';
+    }
+    return err.message;
+  }
+  return '加载失败';
+}
 
 export default function PlayPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [rom, setRom] = useState<ArrayBuffer | null>(null);
   const [title, setTitle] = useState('加载中');
-  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancel = false;
@@ -26,33 +37,32 @@ export default function PlayPage() {
         throw new Error('ROM 下载失败');
       }
       const buffer = await romResponse.arrayBuffer();
+      const problem = readRomError(buffer);
+      if (problem) {
+        throw new Error(problem);
+      }
       if (!cancel) {
         setTitle(game.title);
         setRom(buffer);
       }
     })().catch((err: Error) => {
       if (!cancel) {
-        setError(err.message || '加载失败');
+        router.replace(errorHref(loadMessage(err)));
       }
     });
     return () => {
       cancel = true;
     };
-  }, [params.id]);
+  }, [params.id, router]);
 
-  if (error) {
-    return (
-      <Flex p="4">
-        <Text color="red">{error}</Text>
-      </Flex>
-    );
-  }
   if (!rom) {
-    return (
-      <Flex p="4">
-        <Text>正在加载游戏…</Text>
-      </Flex>
-    );
+    return <Loading label="正在加载游戏" />;
   }
-  return <Emulator rom={rom} title={title} />;
+  return (
+    <Emulator
+      rom={rom}
+      title={title}
+      onError={(message) => router.replace(errorHref(message))}
+    />
+  );
 }

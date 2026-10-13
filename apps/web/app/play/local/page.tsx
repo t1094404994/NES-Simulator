@@ -1,10 +1,13 @@
 'use client';
 
 import { Button, Flex, Heading, Text } from '@radix-ui/themes';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Emulator } from '@/components/Emulator';
+import { errorHref, readRomError } from '@/lib/rom';
 
 export default function LocalPlayPage() {
+  const router = useRouter();
   const [rom, setRom] = useState<ArrayBuffer | null>(null);
   const [title, setTitle] = useState('本地 ROM');
   const [error, setError] = useState('');
@@ -16,6 +19,11 @@ export default function LocalPlayPage() {
     setError('');
     try {
       const buffer = await file.arrayBuffer();
+      const problem = readRomError(buffer);
+      if (problem) {
+        router.push(errorHref(problem));
+        return;
+      }
       setTitle(file.name.replace(/\.nes$/i, ''));
       setRom(buffer);
     } catch {
@@ -24,7 +32,7 @@ export default function LocalPlayPage() {
   }
 
   return (
-    <Flex direction="column" gap="4" p="4">
+    <Flex className="page-shell" direction="column" gap="4" p="4">
       <Heading size="6">本地 ROM</Heading>
       <Text color="gray">文件只在浏览器里运行，不会上传。</Text>
       <Flex align="center" gap="3">
@@ -45,7 +53,13 @@ export default function LocalPlayPage() {
         </Button>
         {error ? <Text color="red">{error}</Text> : null}
       </Flex>
-      {rom ? <Emulator rom={rom} title={title} /> : null}
+      {rom ? (
+        <Emulator
+          rom={rom}
+          title={title}
+          onError={(message) => router.replace(errorHref(message))}
+        />
+      ) : null}
     </Flex>
   );
 }

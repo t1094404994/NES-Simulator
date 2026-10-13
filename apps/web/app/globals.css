@@ -5,6 +5,18 @@ body {
   background: #111;
 }
 
+.page-transition {
+  animation: page-in 280ms ease;
+}
+
+.page-shell {
+  animation: rise-in 320ms ease;
+}
+
+.site-header {
+  backdrop-filter: blur(10px);
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -56,49 +68,54 @@ a {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease;
 }
 
 .menu-toggle:active {
   background: #c2410c;
+  transform: scale(0.97);
 }
 
-.drawer-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  border: 0;
-  padding: 0;
-  background: rgba(0, 0, 0, 0.5);
-  cursor: pointer;
+.rt-BaseDialogOverlay:has(.app-drawer) {
+  z-index: 40;
 }
 
-.drawer {
-  position: absolute;
-  z-index: 4;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  box-sizing: border-box;
-  width: min(320px, calc(100% - 72px));
+.rt-BaseDialogOverlay:has(.app-drawer) .rt-BaseDialogScrollPadding {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow: auto;
-  padding:
-    calc(20px + env(safe-area-inset-top))
-    calc(16px + env(safe-area-inset-right))
-    calc(20px + env(safe-area-inset-bottom))
-    16px;
-  background: #1c1814;
-  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
-  touch-action: pan-y;
-  user-select: text;
+  width: min(380px, 100%);
+  height: 100%;
+  max-width: 100%;
+  margin: 0 0 0 auto;
+  padding: 0;
 }
 
-.emulator .rt-SelectContent,
-.emulator .rt-PopperContent,
-.emulator [data-radix-popper-content-wrapper] {
-  z-index: 6;
+.app-drawer {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  border-radius: 18px 0 0 18px;
+  touch-action: pan-y;
+}
+
+.app-drawer[data-state='open'] {
+  animation: drawer-in 240ms ease;
+}
+
+.app-drawer[data-state='closed'] {
+  animation: drawer-out 180ms ease;
+}
+
+.rt-BaseDialogOverlay[data-state='open']::before {
+  animation: fade-in 200ms ease;
+}
+
+.rt-BaseDialogOverlay[data-state='closed']::before {
+  animation: fade-out 160ms ease;
+}
+
+[data-radix-popper-content-wrapper] {
+  z-index: 60;
 }
 
 .stage-fit {
@@ -202,8 +219,13 @@ a {
   font-size: clamp(16px, 3.2vmin, 24px);
 }
 
+.pad-btn {
+  transition: background 120ms ease, transform 120ms ease;
+}
+
 .pad-btn:active {
   background: #c2410c;
+  transform: scale(0.96);
 }
 
 @media (orientation: portrait) {
@@ -230,4 +252,72 @@ a {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
+}
+
+.game-card {
+  overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.game-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+.loading-screen {
+  min-height: 40vh;
+  animation: fade-in 220ms ease;
+}
+
+.error-page {
+  min-height: calc(100dvh - 64px);
+  padding: 32px 20px;
+}
+
+.error-reason {
+  max-width: 420px;
+}
+
+@keyframes page-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes drawer-in {
+  from { transform: translateX(24px); opacity: 0.4; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes drawer-out {
+  from { transform: none; opacity: 1; }
+  to { transform: translateX(24px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition,
+  .page-shell,
+  .loading-screen,
+  .game-card,
+  .menu-toggle,
+  .pad-btn,
+  .app-drawer,
+  .rt-BaseDialogOverlay::before {
+    animation: none;
+    transition: none;
+  }
 }

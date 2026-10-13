@@ -2,6 +2,7 @@
 
 import { Button, Card, Flex, Heading, Text, TextField } from '@radix-ui/themes';
 import { useEffect, useState } from 'react';
+import { Loading } from '@/components/Loading';
 import { api, coverSrc, type GameItem } from '@/lib/api';
 
 const TOKEN_KEY = 'nes-admin-token';
@@ -14,6 +15,7 @@ export default function AdminPage() {
   const [games, setGames] = useState<GameItem[]>([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   async function reload() {
     const response = await fetch(api.games());
@@ -28,7 +30,9 @@ export default function AdminPage() {
     if (saved) {
       setToken(saved);
     }
-    reload().catch((err: Error) => setError(err.message));
+    reload()
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
   async function upload() {
@@ -75,7 +79,7 @@ export default function AdminPage() {
   }
 
   return (
-    <Flex direction="column" gap="4" p="4" style={{ maxWidth: 720 }}>
+    <Flex className="page-shell" direction="column" gap="4" p="4" style={{ maxWidth: 720 }}>
       <Heading size="6">游戏管理</Heading>
       <Text color="gray">上传封面和 NES ROM。管理口令默认是 dev-admin-token，可用环境变量 ADMIN_TOKEN 修改。</Text>
       <TextField.Root
@@ -108,9 +112,10 @@ export default function AdminPage() {
       <Button onClick={() => void upload()}>保存到列表</Button>
       {message ? <Text color="green">{message}</Text> : null}
       {error ? <Text color="red">{error}</Text> : null}
+      {loading ? <Loading label="正在加载列表" /> : null}
       <div className="game-grid">
         {games.map((game) => (
-          <Card key={game.id}>
+          <Card key={game.id} className="game-card">
             <Flex direction="column" gap="2">
               <img className="cover" src={coverSrc(game.coverUrl)} alt="" />
               <Text>{game.title}</Text>
