@@ -6,6 +6,7 @@ import { GameStore, GameStoreError, coverContentType } from '@nes/db';
 import Fastify from 'fastify';
 
 const PORT = Number(process.env.PORT || 8787);
+const HOST = process.env.HOST || '127.0.0.1';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'dev-admin-token';
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(serverDir, '../data'));
@@ -121,4 +122,4 @@ app.delete<{ Params: { id: string } }>('/api/admin/games/:id', async (request, r
   return reply.code(204).send();
 });
 
-await app.listen({ port: PORT, host: '0.0.0.0' });
+await app.listen({ port: PORT, host: HOST });

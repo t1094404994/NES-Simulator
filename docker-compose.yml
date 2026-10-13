@@ -5,8 +5,9 @@ services:
       dockerfile: Dockerfile
       target: server
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
     environment:
+      HOST: 0.0.0.0
       PORT: 8787
       DATA_DIR: /data
       DATABASE_URL: file:/data/games.db
@@ -37,7 +38,7 @@ services:
       args:
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://127.0.0.1:8787}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       server:
         condition: service_healthy

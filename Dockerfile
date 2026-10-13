@@ -45,7 +45,7 @@ FROM web-deps AS web-build
 COPY apps/web apps/web
 COPY core/nes core/nes
 COPY packages/shared packages/shared
-ARG NEXT_PUBLIC_API_BASE=http://127.0.0.1:8787
+ARG NEXT_PUBLIC_API_BASE=https://www.nes-simulator.com
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 RUN pnpm --filter nes-web build
 

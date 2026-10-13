@@ -1,0 +1,25 @@
+services:
+  server:
+    restart: unless-stopped
+    environment:
+      CORS_ORIGIN: https://www.nes-simulator.com,https://nes-simulator.com
+
+  web:
+    restart: unless-stopped
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE: https://www.nes-simulator.com
+
+  nginx:
+    image: nginx:1.27-alpine
+    network_mode: host
+    depends_on:
+      server:
+        condition: service_healthy
+      web:
+        condition: service_started
+    volumes:
+      - ./deploy/nginx/www.nes-simulator.com.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    restart: unless-stopped
