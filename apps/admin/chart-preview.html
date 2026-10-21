@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <body style="margin: 0; background: #f4f6f8">
+    <div id="root" style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; padding: 16px"></div>
+    <script type="module">
+      import * as echarts from 'echarts';
+      import 'echarts-gl';
+      import { playBarOption, playPieOption } from './src/charts/options.ts';
+
+      const games = [
+        { id: '1', title: 'Super Mario Bros 3', coverUrl: '', plays: 8, players: 3, lastPlayedAt: Date.now() },
+        { id: '2', title: 'Snow Bros', coverUrl: '', plays: 5, players: 2, lastPlayedAt: Date.now() },
+        { id: '3', title: 'Ninja Gaiden', coverUrl: '', plays: 3, players: 2, lastPlayedAt: Date.now() },
+        { id: '4', title: '热血格斗传说', coverUrl: '', plays: 2, players: 1, lastPlayedAt: Date.now() },
+        { id: '5', title: '勇者斗恶龙', coverUrl: '', plays: 1, players: 1, lastPlayedAt: Date.now() },
+      ];
+      const root = document.getElementById('root');
+      for (const option of [playBarOption(games), playPieOption(games)]) {
+        const node = document.createElement('div');
+        node.style.cssText = 'height: 460px; background: #0b1220; border-radius: 12px';
+        root.append(node);
+        echarts.init(node).setOption(option);
+      }
+    </script>
+  </body>
+</html>
