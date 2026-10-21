@@ -15,4 +15,54 @@ model Game {
   rom        Bytes
   sourceName String?  @unique
   createdAt  DateTime @default(now())
+  plays      Play[]
+}
+
+model User {
+  id           String    @id
+  email        String    @unique
+  passwordHash String
+  role         String
+  createdAt    DateTime  @default(now())
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Visitor {
+  id        String   @id
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @default(now())
+  visits    Visit[]
+  plays     Play[]
+}
+
+model Visit {
+  id        String   @id
+  visitorId String
+  day       String
+  createdAt DateTime @default(now())
+  visitor   Visitor  @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+
+  @@unique([visitorId, day])
+  @@index([day])
+}
+
+model Play {
+  id        String   @id
+  gameId    String
+  visitorId String?
+  createdAt DateTime @default(now())
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  visitor   Visitor? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+
+  @@index([gameId])
 }

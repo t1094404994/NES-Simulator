@@ -8,6 +8,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "server": "pnpm --filter nes-server dev",
     "web": "pnpm --filter nes-web dev",
+    "admin": "pnpm --filter nes-admin dev",
     "smoke:mappers": "pnpm --filter nes-simulator smoke:mappers",
     "test:nesdev": "pnpm --filter nes-simulator test:nesdev"
   },

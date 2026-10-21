@@ -14,4 +14,6 @@ export const api = {
   rom: (id: string) => apiUrl(API_BASE, API.rom(id)),
   adminGames: () => apiUrl(API_BASE, API.adminGames),
   adminGame: (id: string) => apiUrl(API_BASE, API.adminGame(id)),
+  trackVisit: () => apiUrl(API_BASE, API.trackVisit),
+  trackPlay: () => apiUrl(API_BASE, API.trackPlay),
 };

@@ -1,11 +1,12 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Emulator } from '@/components/Emulator';
 import { PlayShell } from '@/components/PlayShell';
 import { api, coverSrc, type GameItem } from '@/lib/api';
 import { loadRom, peekGame, peekRom } from '@/lib/playCache';
+import { trackEvent } from '@/lib/track';
 import { errorHref, readRomError } from '@/lib/rom';
 import { SITE_NAME } from '@/lib/seo';
 import { API } from '@nes/shared';
@@ -28,6 +29,7 @@ export default function PlayPage() {
   const [title, setTitle] = useState('');
   const coverUrl = coverSrc(API.cover(id));
   const pageTitle = title ? `${title} · ${SITE_NAME}` : '';
+  const trackedPlay = useRef('');
 
   useEffect(() => {
     let cancel = false;
@@ -61,6 +63,10 @@ export default function PlayPage() {
       if (!cancel) {
         setTitle(game.title);
         setRom(buffer);
+        if (trackedPlay.current !== id) {
+          trackedPlay.current = id;
+          void trackEvent(api.trackPlay(), { gameId: id }).catch(() => {});
+        }
       }
     })().catch((err: unknown) => {
       if (!cancel) {

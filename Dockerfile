@@ -59,3 +59,19 @@ COPY --from=web-build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=web-build /app/apps/web/public ./apps/web/public
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
+
+FROM base AS admin-deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/admin/package.json apps/admin/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN pnpm install --frozen-lockfile --filter nes-admin...
+
+FROM admin-deps AS admin-build
+COPY apps/admin apps/admin
+COPY packages/shared packages/shared
+RUN pnpm --filter nes-admin build
+
+FROM nginx:1.27-alpine AS admin
+COPY apps/admin/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=admin-build /app/apps/admin/dist /usr/share/nginx/html
+EXPOSE 80
