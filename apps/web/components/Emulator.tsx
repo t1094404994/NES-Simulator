@@ -18,12 +18,24 @@ import {
 import Link from 'next/link';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Drawer, useDrawerContainer } from './Drawer';
-import { VirtualPad } from './VirtualPad';
+import { PlayShell } from './PlayShell';
+import { type PadButton } from './VirtualPad';
 
 const ASPECT_PARTS: Record<NesAspect, readonly [number, number]> = {
   '16:9': [16, 9],
   '4:3': [4, 3],
   native: [256, 240],
+};
+
+const PAD_TO_NES: Record<PadButton, NesButton> = {
+  a: NesButton.A,
+  b: NesButton.B,
+  select: NesButton.SELECT,
+  start: NesButton.START,
+  up: NesButton.UP,
+  down: NesButton.DOWN,
+  left: NesButton.LEFT,
+  right: NesButton.RIGHT,
 };
 
 const RENDERER_LABEL: Record<NesRendererKind, string> = {
@@ -60,10 +72,12 @@ function stageStyle(aspect: NesAspect): CSSProperties {
 export function Emulator({
   rom,
   title,
+  coverUrl,
   onError,
 }: {
   rom: ArrayBuffer;
   title: string;
+  coverUrl?: string | null;
   onError?: (message: string) => void;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -275,34 +289,35 @@ export function Emulator({
   const pauseLabel = !started ? '开始' : paused ? '继续' : '暂停';
 
   return (
-    <div className="emulator">
-      <div className="play-layout">
-        <div className="stage-fit">
-          <div ref={stageRef} className="stage" style={stageStyle(aspect)}>
-            <canvas key={renderer} ref={canvasRef} />
-            {error ? (
-              <div className="stage-overlay">
-                <Text color="red">{error}</Text>
-              </div>
-            ) : started ? null : (
-              <div className="stage-overlay">
-                <Button size="3" onClick={begin}>开始</Button>
-              </div>
-            )}
-          </div>
-        </div>
-        <VirtualPad
-          onButton={(button: NesButton, pressed: boolean) => {
-            nesRef.current?.setButton(1, button, pressed);
-          }}
-        />
-      </div>
+    <PlayShell
+      title={title}
+      coverUrl={started ? null : coverUrl}
+      stageRef={stageRef}
+      stageStyle={stageStyle(aspect)}
+      onMenu={() => setMenuOpen(true)}
+      onButton={(button, pressed) => {
+        nesRef.current?.setButton(1, PAD_TO_NES[button], pressed);
+      }}
+      stage={
+        <>
+          <canvas key={renderer} ref={canvasRef} />
+          {error ? (
+            <div className="stage-overlay">
+              <Text color="red">{error}</Text>
+            </div>
+          ) : started ? null : (
+            <div className="stage-overlay">
+              <Button size="3" onClick={begin}>开始</Button>
+            </div>
+          )}
+        </>
+      }
+      menu={
       <Drawer
         open={menuOpen}
         onOpenChange={setMenuOpen}
         title={title}
         description="键盘：J / L 为 A / B，W A S D 方向，Q / E 为 Select / Start"
-        trigger={<button type="button" className="menu-toggle">菜单</button>}
       >
         {error ? <Text color="red">{error}</Text> : null}
         <Button onClick={togglePause}>{pauseLabel}</Button>
@@ -357,6 +372,7 @@ export function Emulator({
           <Link href="/">返回首页</Link>
         </Button>
       </Drawer>
-    </div>
+      }
+    />
   );
 }

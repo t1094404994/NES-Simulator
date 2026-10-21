@@ -5,14 +5,6 @@ body {
   background: #111;
 }
 
-.page-transition {
-  animation: page-in 280ms ease;
-}
-
-.page-shell {
-  animation: rise-in 320ms ease;
-}
-
 .site-header {
   backdrop-filter: blur(10px);
 }
@@ -23,79 +15,155 @@ a {
 }
 
 .emulator {
-  --pad: clamp(36px, 12vmin, 72px);
+  --pad: clamp(42px, 11vmin, 72px);
   --pad-gap: clamp(4px, 1.2vmin, 8px);
   position: fixed;
   inset: 0;
   z-index: 20;
   height: 100dvh;
-  background: #111;
+  display: flex;
+  flex-direction: column;
+  background: #0c0c0c;
   touch-action: none;
   overscroll-behavior: none;
   user-select: none;
 }
 
+.play-top {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 48px;
+  padding:
+    calc(6px + env(safe-area-inset-top))
+    calc(12px + env(safe-area-inset-right))
+    6px
+    calc(12px + env(safe-area-inset-left));
+  z-index: 6;
+}
+
+.play-title {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.play-icon-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #f5efe6;
+  padding: 0;
+  cursor: pointer;
+}
+
+.play-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.play-icon-btn:active:not(:disabled) {
+  background: #c2410c;
+  transform: scale(0.96);
+}
+
 .play-layout {
   box-sizing: border-box;
-  height: 100%;
+  flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   grid-template-areas:
-    "dpad stage actions"
-    "system system system";
-  gap: clamp(6px, 1.5vmin, 16px);
+    "stage stage"
+    "dpad actions"
+    "system system";
+  gap: clamp(8px, 1.8vmin, 16px);
   padding:
-    calc(48px + env(safe-area-inset-top))
-    calc(12px + env(safe-area-inset-right))
-    calc(8px + env(safe-area-inset-bottom))
-    calc(12px + env(safe-area-inset-left));
-}
-
-.menu-toggle {
-  position: absolute;
-  z-index: 5;
-  top: calc(8px + env(safe-area-inset-top));
-  left: calc(8px + env(safe-area-inset-left));
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid #5a4632;
-  background: #2a2118;
-  color: #f5efe6;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 140ms ease, transform 140ms ease;
-}
-
-.menu-toggle:active {
-  background: #c2410c;
-  transform: scale(0.97);
+    8px
+    calc(16px + env(safe-area-inset-right))
+    calc(12px + env(safe-area-inset-bottom))
+    calc(16px + env(safe-area-inset-left));
 }
 
 .rt-BaseDialogOverlay:has(.app-drawer) {
   z-index: 40;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.rt-BaseDialogOverlay:has(.app-drawer) .rt-BaseDialogScroll {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  display: flex;
+  flex: none;
+  width: min(380px, 92vw);
+  height: auto;
+  margin: 0;
+  padding: 0;
 }
 
 .rt-BaseDialogOverlay:has(.app-drawer) .rt-BaseDialogScrollPadding {
   display: flex;
-  width: min(380px, 100%);
+  flex: none;
+  width: 100%;
+  max-width: none;
   height: 100%;
-  max-width: 100%;
-  margin: 0 0 0 auto;
+  margin: 0;
   padding: 0;
 }
 
 .app-drawer {
   width: 100%;
+  max-width: none;
   height: 100%;
   max-height: 100%;
   margin: 0;
   border-radius: 18px 0 0 18px;
+  overflow: auto;
+  box-sizing: border-box;
+  background: #1c1916;
   touch-action: pan-y;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.drawer-copy {
+  min-width: 0;
+}
+
+.drawer-close {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .app-drawer[data-state='open'] {
@@ -104,6 +172,46 @@ a {
 
 .app-drawer[data-state='closed'] {
   animation: drawer-out 180ms ease;
+}
+
+@media (max-width: 720px) {
+  .rt-BaseDialogOverlay:has(.app-drawer) {
+    align-items: flex-end;
+  }
+
+  .rt-BaseDialogOverlay:has(.app-drawer) .rt-BaseDialogScroll {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    flex-direction: column;
+    width: 100%;
+    height: auto;
+    max-height: 85dvh;
+    margin: 0;
+  }
+
+  .rt-BaseDialogOverlay:has(.app-drawer) .rt-BaseDialogScrollPadding {
+    width: 100%;
+    height: auto;
+    max-height: 85dvh;
+  }
+
+  .app-drawer {
+    height: auto;
+    max-width: none;
+    max-height: 85dvh;
+    border-radius: 18px 18px 0 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .app-drawer[data-state='open'] {
+    animation: sheet-in 240ms ease;
+  }
+
+  .app-drawer[data-state='closed'] {
+    animation: sheet-out 180ms ease;
+  }
 }
 
 .rt-BaseDialogOverlay[data-state='open']::before {
@@ -128,12 +236,27 @@ a {
 }
 
 .stage {
+  --ar-w: 16;
+  --ar-h: 9;
   position: relative;
   max-width: 100%;
   max-height: 100%;
   width: min(100cqw, calc(100cqh * var(--ar-w) / var(--ar-h)));
   height: min(100cqh, calc(100cqw * var(--ar-h) / var(--ar-w)));
   background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.stage-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
 }
 
 .stage canvas {
@@ -145,10 +268,11 @@ a {
 .stage-overlay {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.28);
 }
 
 .pad {
@@ -186,10 +310,21 @@ a {
   grid-area: actions;
   justify-self: center;
   align-self: center;
-  display: flex;
-  gap: clamp(10px, 2vmin, 18px);
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  width: calc(var(--pad) * 2.55);
+  height: calc(var(--pad) * 2.35);
+}
+
+.pad-a {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.pad-b {
+  position: absolute;
+  left: 0;
+  bottom: 0;
 }
 
 .pad-btn {
@@ -200,16 +335,20 @@ a {
   background: #2a2118;
   color: #f5efe6;
   font: inherit;
+  font-size: clamp(18px, 4vmin, 26px);
   font-weight: 700;
   touch-action: none;
   cursor: pointer;
 }
 
 .pad-btn.small {
-  width: calc(var(--pad) * 1.35);
-  height: calc(var(--pad) * 0.72);
+  width: auto;
+  min-width: 84px;
+  height: 34px;
+  padding: 0 14px;
   border-radius: 999px;
-  font-size: clamp(18px, 4vmin, 28px);
+  font-size: 11px;
+  letter-spacing: 0.06em;
 }
 
 .pad-btn.round {
@@ -228,35 +367,64 @@ a {
   transform: scale(0.96);
 }
 
-@media (orientation: portrait) {
+@media (orientation: landscape) {
+  .play-top {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0));
+    pointer-events: none;
+  }
+
+  .play-top > * {
+    pointer-events: auto;
+  }
+
   .play-layout {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto;
     grid-template-areas:
-      "stage stage"
-      "dpad actions"
-      "system system";
+      "dpad stage actions"
+      "system system system";
+    padding:
+      calc(8px + env(safe-area-inset-top))
+      calc(10px + env(safe-area-inset-right))
+      calc(8px + env(safe-area-inset-bottom))
+      calc(10px + env(safe-area-inset-left));
   }
 }
 
 .cover {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 3 / 4;
   object-fit: cover;
   display: block;
   background: #222;
-  border-radius: 8px;
 }
 
 .game-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
 }
 
 .game-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
   overflow: hidden;
+  color: inherit;
+  background: #221c18;
+  border: 1px solid #3a3128;
+  border-radius: 12px;
   transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.game-title {
+  margin: 0;
+  padding: 0 12px;
 }
 
 .game-card:hover {
@@ -276,16 +444,6 @@ a {
 
 .error-reason {
   max-width: 420px;
-}
-
-@keyframes page-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes rise-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: none; }
 }
 
 @keyframes fade-in {
@@ -308,12 +466,20 @@ a {
   to { transform: translateX(24px); opacity: 0; }
 }
 
+@keyframes sheet-in {
+  from { transform: translateY(28px); opacity: 0.5; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes sheet-out {
+  from { transform: none; opacity: 1; }
+  to { transform: translateY(28px); opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .page-transition,
-  .page-shell,
   .loading-screen,
   .game-card,
-  .menu-toggle,
+  .play-icon-btn,
   .pad-btn,
   .app-drawer,
   .rt-BaseDialogOverlay::before {

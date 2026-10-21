@@ -1,6 +1,7 @@
 'use client';
 
 import { Button, Flex, Heading, Text } from '@radix-ui/themes';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Emulator } from '@/components/Emulator';
@@ -31,9 +32,24 @@ export default function LocalPlayPage() {
     }
   }
 
+  if (rom) {
+    return (
+      <Emulator
+        rom={rom}
+        title={title}
+        onError={(message) => router.replace(errorHref(message))}
+      />
+    );
+  }
+
   return (
     <Flex className="page-shell" direction="column" gap="4" p="4">
-      <Heading size="6">本地 ROM</Heading>
+      <Flex justify="between" align="center">
+        <Heading size="6">本地 ROM</Heading>
+        <Button asChild variant="soft" color="gray">
+          <Link href="/">返回</Link>
+        </Button>
+      </Flex>
       <Text color="gray">文件只在浏览器里运行，不会上传。</Text>
       <Flex align="center" gap="3">
         <Button asChild>
@@ -53,13 +69,6 @@ export default function LocalPlayPage() {
         </Button>
         {error ? <Text color="red">{error}</Text> : null}
       </Flex>
-      {rom ? (
-        <Emulator
-          rom={rom}
-          title={title}
-          onError={(message) => router.replace(errorHref(message))}
-        />
-      ) : null}
     </Flex>
   );
 }

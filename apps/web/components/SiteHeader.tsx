@@ -14,7 +14,6 @@ export function SiteHeader() {
       </Heading>
       <Flex gap="4">
         <Link href="/play/local">本地 ROM</Link>
-        <Link href="/admin">管理</Link>
       </Flex>
     </Flex>
   );

@@ -21,21 +21,28 @@ export function Drawer({
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
-  trigger: ReactElement;
+  trigger?: ReactElement;
   children: ReactNode;
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Trigger>{trigger}</Dialog.Trigger>
+      {trigger ? <Dialog.Trigger>{trigger}</Dialog.Trigger> : null}
       <Dialog.Content
         ref={setContainer}
         className="app-drawer"
         {...(description ? {} : { 'aria-describedby': undefined })}
       >
         <DrawerContainerContext.Provider value={container}>
-          <Dialog.Title>{title}</Dialog.Title>
-          {description ? <Dialog.Description color="gray" size="2">{description}</Dialog.Description> : null}
+          <div className="drawer-head">
+            <div className="drawer-copy">
+              <Dialog.Title>{title}</Dialog.Title>
+              {description ? <Dialog.Description color="gray" size="2">{description}</Dialog.Description> : null}
+            </div>
+            <button type="button" className="drawer-close" aria-label="关闭" onClick={() => onOpenChange(false)}>
+              ×
+            </button>
+          </div>
           <Flex direction="column" gap="4" mt="4">
             {children}
           </Flex>

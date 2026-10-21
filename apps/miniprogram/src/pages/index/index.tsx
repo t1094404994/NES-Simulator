@@ -26,7 +26,7 @@ export default function IndexPage() {
     <View className="page">
       <Text className="hint">从列表选择游戏</Text>
       {error ? <Text className="hint">{error}</Text> : null}
-      {!error && games.length === 0 ? <Text className="hint">列表是空的。先在网页管理页上传游戏。</Text> : null}
+      {!error && games.length === 0 ? <Text className="hint">列表是空的。</Text> : null}
       {games.map((game) => (
         <View
           key={game.id}

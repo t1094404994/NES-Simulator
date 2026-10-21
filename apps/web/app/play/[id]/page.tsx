@@ -3,9 +3,12 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Emulator } from '@/components/Emulator';
-import { Loading } from '@/components/Loading';
-import { api, type GameItem } from '@/lib/api';
+import { PlayShell } from '@/components/PlayShell';
+import { api, coverSrc, type GameItem } from '@/lib/api';
+import { loadRom, peekGame, peekRom } from '@/lib/playCache';
 import { errorHref, readRomError } from '@/lib/rom';
+import { SITE_NAME } from '@/lib/seo';
+import { API } from '@nes/shared';
 
 function loadMessage(err: unknown): string {
   if (err instanceof Error) {
@@ -20,23 +23,37 @@ function loadMessage(err: unknown): string {
 export default function PlayPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const id = params.id;
   const [rom, setRom] = useState<ArrayBuffer | null>(null);
-  const [title, setTitle] = useState('加载中');
+  const [title, setTitle] = useState('');
+  const coverUrl = coverSrc(API.cover(id));
+  const pageTitle = title ? `${title} · ${SITE_NAME}` : '';
 
   useEffect(() => {
     let cancel = false;
-    const id = params.id;
+    const known = peekGame(id);
+    setTitle(known?.title ?? '');
+    const cached = peekRom(id);
+    if (cached) {
+      const problem = readRomError(cached);
+      if (problem) {
+        router.replace(errorHref(problem));
+        return;
+      }
+      setRom(cached);
+    } else {
+      setRom(null);
+    }
     (async () => {
-      const gameResponse = await fetch(api.game(id));
-      if (!gameResponse.ok) {
-        throw new Error('找不到这款游戏');
-      }
-      const game = (await gameResponse.json()) as GameItem;
-      const romResponse = await fetch(api.rom(id));
-      if (!romResponse.ok) {
-        throw new Error('ROM 下载失败');
-      }
-      const buffer = await romResponse.arrayBuffer();
+      const [game, buffer] = await Promise.all([
+        fetch(api.game(id)).then(async (response) => {
+          if (!response.ok) {
+            throw new Error('找不到这款游戏');
+          }
+          return response.json() as Promise<GameItem>;
+        }),
+        loadRom(id),
+      ]);
       const problem = readRomError(buffer);
       if (problem) {
         throw new Error(problem);
@@ -45,7 +62,7 @@ export default function PlayPage() {
         setTitle(game.title);
         setRom(buffer);
       }
-    })().catch((err: Error) => {
+    })().catch((err: unknown) => {
       if (!cancel) {
         router.replace(errorHref(loadMessage(err)));
       }
@@ -53,16 +70,25 @@ export default function PlayPage() {
     return () => {
       cancel = true;
     };
-  }, [params.id, router]);
+  }, [id, router]);
 
   if (!rom) {
-    return <Loading label="正在加载游戏" />;
+    return (
+      <>
+        {pageTitle ? <title>{pageTitle}</title> : null}
+        <PlayShell title={title} coverUrl={coverUrl} />
+      </>
+    );
   }
   return (
-    <Emulator
-      rom={rom}
-      title={title}
-      onError={(message) => router.replace(errorHref(message))}
-    />
+    <>
+      {pageTitle ? <title>{pageTitle}</title> : null}
+      <Emulator
+        rom={rom}
+        title={title || 'NES'}
+        coverUrl={coverUrl}
+        onError={(message) => router.replace(errorHref(message))}
+      />
+    </>
   );
 }

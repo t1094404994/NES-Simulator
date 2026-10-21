@@ -1,7 +1,6 @@
 import '@radix-ui/themes/styles.css';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { SiteHeader } from '@/components/SiteHeader';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/seo';
 import { Providers } from './providers';
 import './globals.css';
@@ -52,7 +51,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="zh-CN">
       <body>
         <Providers>
-          <SiteHeader />
           {children}
         </Providers>
       </body>
