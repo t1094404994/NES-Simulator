@@ -4,8 +4,8 @@ import {NametableType} from '../nametableType';
 /** iNES Mapper 7 — AxROM：32KB PRG bank；bit4 单屏 mirroring */
 export class Mapper7 implements Mapper{
   private chRamPtr:ArrayBuffer;
-  private chRamPtrDataView:DataView;
-  private rpgDataView:DataView;
+  private chRamPtrUint8Array:Uint8Array;
+  private rpgUint8Array:Uint8Array;
   private cartridge:CartridgeReader;
   public nametableMirror:number;
   private prgBank:number;
@@ -18,9 +18,9 @@ export class Mapper7 implements Mapper{
   public reset(_cartridge:CartridgeReader,_hasVrom:boolean):void{
     // AxROM 通常使用 CHR RAM
     this.chRamPtr=new ArrayBuffer(8192);
-    this.chRamPtrDataView=new DataView(this.chRamPtr);
+    this.chRamPtrUint8Array=new Uint8Array(this.chRamPtr);
     this.cartridge=_cartridge;
-    this.rpgDataView=new DataView(
+    this.rpgUint8Array=new Uint8Array(
       this.cartridge.cartridgeData,
       this.cartridge.programOffset,
       this.cartridge.romNum*16384
@@ -34,7 +34,7 @@ export class Mapper7 implements Mapper{
 
   public cpuReadRpg(busAddress:number):number{
     const addr=this.prgBank*0x8000+(busAddress&0x7fff);
-    return this.rpgDataView.getUint8(addr);
+    return this.rpgUint8Array[addr];
   }
 
   public cpuWriteRpg(_busAddress:number,value:number):void{
@@ -54,10 +54,10 @@ export class Mapper7 implements Mapper{
   }
 
   public ppuReadPt(busAddress:number):number{
-    return this.chRamPtrDataView.getUint8(busAddress&0x1fff);
+    return this.chRamPtrUint8Array[busAddress&0x1fff];
   }
 
   public ppuWritePt(busAddress:number,value:number):void{
-    this.chRamPtrDataView.setUint8(busAddress&0x1fff,value);
+    this.chRamPtrUint8Array[busAddress&0x1fff]=value;
   }
 }

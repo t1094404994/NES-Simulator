@@ -6,129 +6,6 @@ export const CPU_CYCLE_PER_SEC=1789773;
 // NTSC 一帧约 29780.5 CPU 周期；取整后由 PPU 帧作为主时钟，不再用无 PPU 的 CPU 追赶补齐
 export const CPU_CYCLE_PER_FRAME=29781;
 //状态寄存器
-class StatusFlag{
-  private data:number;
-  constructor(){
-    this.data=1<<5;
-  }
-
-  public getData():number{
-    return this.data;
-  }
-
-  public setData(value:number){
-    this.data=value&0xff;
-  }
-
-  /**
-   * TODO 移动到Math.util里去
-   * 把数值某位指定为1或0
-   * @param value 被指定的数值
-   * @param bit 哪一位
-   * @param bool true为1，false为0
-   */
-  public SpecifieBit(value:number,bit:number,bool:boolean):number{
-    if(bool){
-      //加减运算符大于位移，位移大于位与/位或
-      value=value|1<<bit;
-    }else{
-      //按位非跟加减运算符同级
-      value=value&~(1<<bit);
-    }
-    return value;
-  }
-
-  /**
-   * 某个数的指定位是否为1
-   * @param data 
-   * @param bit 
-   */
-  public getBitVaule(data:number,bit:number):number{
-    return data&1<<bit;
-  }
-
-  // 进位标记(Carry flag)
-  public setC(bool:boolean):void{
-    this.data=this.SpecifieBit(this.data,0,bool);
-  }
-
-  // 零标记 (Zero flag)
-  public setZ(bool:boolean):void{
-    this.data=this.SpecifieBit(this.data,1,bool);
-  }
-
-  // 禁止中断(Irq disabled flag)
-  public setI(bool:boolean):void{
-    this.data=this.SpecifieBit(this.data,2,bool);
-  }
-
-  //NES没有使用
-  // 十进制模式(Decimal mode flag)
-  public setD(bool:boolean):void{
-    this.data=this.SpecifieBit(this.data,3,bool);
-  }
-
-  // 软件中断(BRK flag)
-  public setB(bool:boolean):void{
-    this.data=this.SpecifieBit(this.data,4,bool);
-  }
-
-  // 保留标记(Reserved) 一直为1
-  public setU(bool:boolean):void{
-    this.data=this.SpecifieBit(this.data,5,bool);
-  }
-
-  // 溢出标记(Overflow  flag)
-  public setV(bool:boolean):void{
-    this.data=this.SpecifieBit(this.data,6,bool);
-  }
-
-  // 符号标记(Sign flag)
-  public setN(bool:boolean):void{
-    this.data=this.SpecifieBit(this.data,7,bool);
-  }
-
-  public getC():number{
-    if(this.getBitVaule(this.data,0)) return 1;
-    else return 0; 
-  }
-
-  public getZ():number{
-    if(this.getBitVaule(this.data,1)) return 1;
-    else return 0; 
-  }
-
-  public getI():number{
-    if(this.getBitVaule(this.data,2)) return 1;
-    else return 0; 
-  }
-
-  public getD():number{
-    if(this.getBitVaule(this.data,3)) return 1;
-    else return 0; 
-  }
-
-  public getB():number{
-    if(this.getBitVaule(this.data,4)) return 1;
-    else return 0; 
-  }
-
-  public getU():number{
-    if(this.getBitVaule(this.data,5)) return 1;
-    else return 0; 
-  }
-
-  public getV():number{
-    if(this.getBitVaule(this.data,6)) return 1;
-    else return 0; 
-  }
-
-  public getN():number{
-    if(this.getBitVaule(this.data,7)) return 1;
-    else return 0; 
-  }
-}
-
 //寻址模式
 enum AddressMode{
   IMP,IMM,ABS,ZP0,ABX,ABY,ZPX,ZPY,IND,IZX,IZY,REL
@@ -152,7 +29,7 @@ export class Cpu{
   //栈指针偏移 RAM中第256位起的256字节才是栈空间
   private regSpOffSet:number;
   //状态寄存器, 8bit
-  public regSf:StatusFlag;
+  public status=0x20;
   //程序计数器,将要执行的指令(总线)地址 每次执行后自增 16bit
   private regPc:number;
   
@@ -165,6 +42,7 @@ export class Cpu{
   private opcode:number;
   //操作码对应的操作指令
   private opcodeMapTable:Array<Instruction>;
+  private handlers:Array<()=>number>;
   //等待循环
   private cyclesWait:number;
   //该帧中当前的cpu周期
@@ -193,7 +71,6 @@ export class Cpu{
   //画面刷新率
   public frame:number;
   constructor(){
-    this.regSf=new StatusFlag();
     this.regSpOffSet=0x100;
     this.cyclesWait=0;
     this.cycleFrame=0;
@@ -212,6 +89,36 @@ export class Cpu{
     this.initTable();
   }
 
+  public pendingCycles():number{
+    return this.halted?0:this.cyclesWait;
+  }
+
+  private setBit(bit:number,on:boolean):void{
+    if(on) this.status|=1<<bit;
+    else this.status&=~(1<<bit);
+  }
+
+  private getBit(bit:number):number{
+    return (this.status>>bit)&1;
+  }
+
+  private setC(on:boolean):void{ this.setBit(0,on); }
+  private getC():number{ return this.getBit(0); }
+  private setZ(on:boolean):void{ this.setBit(1,on); }
+  private getZ():number{ return this.getBit(1); }
+  private setI(on:boolean):void{ this.setBit(2,on); }
+  private getI():number{ return this.getBit(2); }
+  private setD(on:boolean):void{ this.setBit(3,on); }
+  private setB(on:boolean):void{ this.setBit(4,on); }
+  private setU(on:boolean):void{ this.setBit(5,on); }
+  private getU():number{ return this.getBit(5); }
+  private setV(on:boolean):void{ this.setBit(6,on); }
+  private getV():number{ return this.getBit(6); }
+  private setN(on:boolean):void{ this.setBit(7,on); }
+  private getN():number{ return this.getBit(7); }
+  private getStatus():number{ return this.status&0xff; }
+  private setStatus(value:number):void{ this.status=value&0xff; }
+
   //重置/初始化CPU状态
   public reset():void{
     this.regA=0;
@@ -223,8 +130,8 @@ export class Cpu{
     const hiBit:number=this.cpuBus.getValue(0xfffd);
     this.regPc=hiBit<<8|loBit;
     //设置中断
-    this.regSf.setI(true);
-    this.regSf.setU(true);
+    this.setI(true);
+    this.setU(true);
     this.nmiPending=false;
     this.nmiDelay=0;
     this.halted=false;
@@ -234,7 +141,7 @@ export class Cpu{
   }
 
   public setRegSfIrq(value:boolean):void{
-    this.regSf.setI(value);
+    this.setI(value);
   }
 
   public setCpuBus(_cpuBus:CpuBus):void{
@@ -321,6 +228,90 @@ export class Cpu{
     for(const opcode of [0x02,0x12,0x22,0x32,0x42,0x52,0x62,0x72,0x92,0xb2,0xd2,0xf2]){
       set(opcode,'KIL',AddressMode.IMP,2);
     }
+    this.bindHandlers();
+  }
+
+  private bindHandlers():void{
+    const byName:Record<string,()=>number>={
+      ADC:()=>this.ADC(),
+      AND:()=>this.AND(),
+      ASL:()=>this.ASL(),
+      BCC:()=>this.BCC(),
+      BCS:()=>this.BCS(),
+      BEQ:()=>this.BEQ(),
+      BIT:()=>this.BIT(),
+      BMI:()=>this.BMI(),
+      BNE:()=>this.BNE(),
+      BPL:()=>this.BPL(),
+      BRK:()=>this.BRK(),
+      BVC:()=>this.BVC(),
+      BVS:()=>this.BVS(),
+      CLC:()=>this.CLC(),
+      CLD:()=>this.CLD(),
+      CLI:()=>this.CLI(),
+      CLV:()=>this.CLV(),
+      CMP:()=>this.CMP(),
+      CPX:()=>this.CPX(),
+      CPY:()=>this.CPY(),
+      DEC:()=>this.DEC(),
+      DEX:()=>this.DEX(),
+      DEY:()=>this.DEY(),
+      EOR:()=>this.EOR(),
+      INC:()=>this.INC(),
+      INX:()=>this.INX(),
+      INY:()=>this.INY(),
+      JMP:()=>this.JMP(),
+      JSR:()=>this.JSR(),
+      LDA:()=>this.LDA(),
+      LDX:()=>this.LDX(),
+      LDY:()=>this.LDY(),
+      LSR:()=>this.LSR(),
+      NOP:()=>this.NOP(),
+      ORA:()=>this.ORA(),
+      PHA:()=>this.PHA(),
+      PHP:()=>this.PHP(),
+      PLA:()=>this.PLA(),
+      PLP:()=>this.PLP(),
+      ROL:()=>this.ROL(),
+      ROR:()=>this.ROR(),
+      RTI:()=>this.RTI(),
+      RTS:()=>this.RTS(),
+      SBC:()=>this.SBC(),
+      SEC:()=>this.SEC(),
+      SED:()=>this.SED(),
+      SEI:()=>this.SEI(),
+      STA:()=>this.STA(),
+      STX:()=>this.STX(),
+      STY:()=>this.STY(),
+      TAX:()=>this.TAX(),
+      TAY:()=>this.TAY(),
+      TSX:()=>this.TSX(),
+      TXA:()=>this.TXA(),
+      TXS:()=>this.TXS(),
+      TYA:()=>this.TYA(),
+      SLO:()=>this.SLO(),
+      RLA:()=>this.RLA(),
+      SRE:()=>this.SRE(),
+      RRA:()=>this.RRA(),
+      SAX:()=>this.SAX(),
+      LAX:()=>this.LAX(),
+      DCP:()=>this.DCP(),
+      ISC:()=>this.ISC(),
+      AAC:()=>this.AAC(),
+      ASR:()=>this.ASR(),
+      ARR:()=>this.ARR(),
+      ATX:()=>this.ATX(),
+      AXS:()=>this.AXS(),
+      ANE:()=>this.ANE(),
+      AHX:()=>this.AHX(),
+      SHY:()=>this.SHY(),
+      SHX:()=>this.SHX(),
+      TAS:()=>this.TAS(),
+      LAS:()=>this.LAS(),
+      KIL:()=>{ this.halted=true; return 0; },
+      '???':()=>0,
+    };
+    this.handlers=this.opcodeMapTable.map((instr)=>byName[instr.name]??(()=>0));
   }
 
   //CPU主循环
@@ -346,7 +337,7 @@ export class Cpu{
       if(this.irqCounter) {
         --this.irqCounter;
         if(this.irqCounter === 0) {
-          if(!this.regSf.getI()){
+          if(!this.getI()){
             this.irqInProcess =1;
             this.irq();
             this.cyclesWait--;
@@ -358,18 +349,18 @@ export class Cpu{
       }
       //根据程序寄存器寄存的地址，读取汇编操作码
       this.opcode=this.cpuBus.getValue(this.regPc++);
-      this.regSf.setU(true);
+      this.setU(true);
       //根据操作码对应的寻址方式，找到操作数的地址
       const instr:Instruction=this.opcodeMapTable[this.opcode];
       const modeCycles:number=this.impAddressMode(instr.addressMode);
       //执行操作码
-      const instrCycles:number=this.impInstructions(instr.name);
+      const instrCycles:number=this.handlers[this.opcode]();
       //计算这条指令花费的周期
       this.cyclesWait=instr.cycleCnt;
       //跨页的话周期要多加
       if(instrCycles < 0) this.cyclesWait += (-instrCycles);
       else this.cyclesWait += (instrCycles & modeCycles);
-      this.regSf.setU(true);
+      this.setU(true);
       this.testCycles+=this.cyclesWait;
       this.cycleFrame+=this.cyclesWait;
     }
@@ -390,7 +381,7 @@ export class Cpu{
   //CPU执行可屏蔽中断
   public irq():void{
     // I=1 时保持挂起，等 CLI/PLP/RTI 后再进（勿丢弃）
-    if(this.regSf.getI()){
+    if(this.getI()){
       this.irqFlag=1;
       this.irqInProcess=0;
       return;
@@ -398,8 +389,8 @@ export class Cpu{
     this.irqFlag=0;
     this.stackPush(this.regPc >> 8);
     this.stackPush(this.regPc & 0xFF);
-    this.stackPush(this.regSf.getData()|0x20);
-    this.regSf.setI(true);
+    this.stackPush(this.getStatus()|0x20);
+    this.setI(true);
     const lo:number=this.cpuBus.getValue(0xFFFE);
     const hi:number=this.cpuBus.getValue(0xFFFF)<<8;
     this.regPc =hi+lo;
@@ -412,10 +403,10 @@ export class Cpu{
     //console.log('CPU执行不可屏蔽中断');
     this.stackPush(this.regPc >> 8);
     this.stackPush(this.regPc & 0xFF);
-    // this.regSf.setB(false);
-    // this.regSf.setU(true);
-    this.stackPush(this.regSf.getData()|0x20);
-    this.regSf.setI(true);
+    // this.setB(false);
+    // this.setU(true);
+    this.stackPush(this.getStatus()|0x20);
+    this.setI(true);
     const lo:number=this.cpuBus.getValue(0xFFFA);
     const hi:number=this.cpuBus.getValue(0xFFFB)<<8;
     this.regPc =hi+lo;
@@ -577,12 +568,12 @@ export class Cpu{
     //1.先取走addr_res对应的数值
     const operand:number =this.cpuBus.getValue(this.address);
     //2.加法计算，并写入标志位
-    const sum:number = (this.regA + operand + this.regSf.getC())&0xffff;
-    this.regSf.setC(sum >= 0x100);
-    this.regSf.setV(Boolean((this.regA ^ sum) & (operand ^ sum) & 0x80));
+    const sum:number = (this.regA + operand + this.getC())&0xffff;
+    this.setC(sum >= 0x100);
+    this.setV(Boolean((this.regA ^ sum) & (operand ^ sum) & 0x80));
     //reg_sf.set_v((~((uint16_t)reg_a ^ (uint16_t)operand) & ((uint16_t)reg_a ^ (uint16_t)sum)) & 0x0080);
-    this.regSf.setZ((sum & 0xFF) === 0);
-    this.regSf.setN(Boolean(sum & 0x80));
+    this.setZ((sum & 0xFF) === 0);
+    this.setN(Boolean(sum & 0x80));
     this.regA = sum & 0xFF;
     return 1;
   }
@@ -590,8 +581,8 @@ export class Cpu{
   //存储器单元与累加器做与运算
   private AND():number{
     this.regA&=this.cpuBus.getValue(this.address);
-    this.regSf.setZ(this.regA === 0);
-    this.regSf.setN(Boolean(this.regA & 0x80));
+    this.setZ(this.regA === 0);
+    this.setN(Boolean(this.regA & 0x80));
     return 1;
   }
 
@@ -600,17 +591,17 @@ export class Cpu{
     if (this.opcodeMapTable[this.opcode].addressMode === AddressMode.IMP){
       //IMP(Accumulator)累加器寻址模式下，直接赋值给A寄存器
       const temp:number = this.regA << 1;
-      this.regSf.setC(temp >= 0x100);
-      this.regSf.setZ((temp & 0x00FF) === 0);
-      this.regSf.setN((temp & 0x80)!==0);
+      this.setC(temp >= 0x100);
+      this.setZ((temp & 0x00FF) === 0);
+      this.setN((temp & 0x80)!==0);
       this.regA = temp & 0x00FF;
     }else{
       //其他模式下，先取走操作符，再对操作符赋值
       const operand:number = this.cpuBus.getValue(this.address);
       const temp:number = operand << 1;
-      this.regSf.setC(temp >= 0x100);
-      this.regSf.setZ((temp & 0x00FF) === 0);
-      this.regSf.setN((temp & 0x80)!==0);
+      this.setC(temp >= 0x100);
+      this.setZ((temp & 0x00FF) === 0);
+      this.setN((temp & 0x80)!==0);
       this.cpuBus.setValue(this.address,temp & 0x00FF);
     }
     return 0;
@@ -619,7 +610,7 @@ export class Cpu{
   //如果标志位C(arry) = 0[即没进位]则跳转，否则继续
   private BCC():number{
     let cycles_add = 0;
-    if (this.regSf.getC() === 0){
+    if (this.getC() === 0){
       this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
@@ -635,7 +626,7 @@ export class Cpu{
   private BCS():number{
     //C=1则进入分支
     let cycles_add = 0;
-    if (this.regSf.getC() === 1){
+    if (this.getC() === 1){
       this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
@@ -650,7 +641,7 @@ export class Cpu{
   //如果标志位Z=1则跳转，否则继续
   private BEQ():number{
     let cycles_add = 0;
-    if (this.regSf.getZ() === 1){
+    if (this.getZ() === 1){
       this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
@@ -665,17 +656,17 @@ export class Cpu{
   //位测试 - 若 A&M 结果 =0, 那么Z=1 - 若 A&M 结果!=0, 那么Z=0; S = M的第7位 ; V = M的第6位
   private BIT():number{
     const operand:number=this.cpuBus.getValue(this.address);
-    this.regSf.setZ((this.regA & operand) === 0);
+    this.setZ((this.regA & operand) === 0);
     //位移优先级在位操作之上
-    this.regSf.setV((operand & 1 << 6)!==0);
-    this.regSf.setN((operand & 1 << 7)!==0);
+    this.setV((operand & 1 << 6)!==0);
+    this.setN((operand & 1 << 7)!==0);
     return 0;
   }
 
   //如果标志位S(ign) = 1[即负数]则跳转，否则继续
   private BMI():number{
     let cycles_add = 0;
-    if (this.regSf.getN() === 1){
+    if (this.getN() === 1){
       this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
@@ -690,7 +681,7 @@ export class Cpu{
   //如果标志位Z(ero) = 0[即不相同]则跳转，否则继续, 
   private BNE():number{
     let cycles_add = 0;
-    if (this.regSf.getZ() === 0){
+    if (this.getZ() === 0){
       this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
@@ -705,7 +696,7 @@ export class Cpu{
   //如果负标志位N = 0(正数)则跳转
   private BPL():number{
     let cycles_add = 0;
-    if (this.regSf.getN() === 0){
+    if (this.getN() === 0){
       this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
@@ -726,10 +717,10 @@ export class Cpu{
     // IMM 寻址已消费 BRK 的填充字节，regPc 现在就是中断返回地址。
     this.stackPush(this.regPc>>8);
     this.stackPush(this.regPc&0xff);
-    this.regSf.setB(true);
-    this.stackPush(this.regSf.getData());
-    this.regSf.setB(false);
-    this.regSf.setI(true);
+    this.setB(true);
+    this.stackPush(this.getStatus());
+    this.setB(false);
+    this.setI(true);
     //2.从中断地址处获取新的Program Counter值
     const lo8:number= this.cpuBus.getValue(0xFFFE); //小端序
     const hi8:number= this.cpuBus.getValue(0xFFFF);
@@ -740,7 +731,7 @@ export class Cpu{
   //如果标志位(o)V(erflow) = 0[即没有溢出]则跳转
   private BVC():number{
     let cycles_add = 0;
-    if (this.regSf.getV() === 0){
+    if (this.getV() === 0){
       this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
@@ -755,7 +746,7 @@ export class Cpu{
   //如果标志位(o)V(erflow) = 1[即溢出]则跳转
   private BVS():number{
     let cycles_add = 0;
-    if (this.regSf.getV() === 1){
+    if (this.getV() === 1){
       this.address=(this.regPc+this.addressRel)&0xffff;
       //如果新老PC寄存器值不在同一页上，则增加2个时钟周期，否则增加一个时钟周期
       if ((this.address & 0xFF00) !== (this.regPc & 0xFF00))
@@ -769,26 +760,26 @@ export class Cpu{
 
   //清除进位标志C
   private CLC():number{
-    this.regSf.setC(false);
+    this.setC(false);
     return 0;
   }
 
   //清除十进制模式标志D 理论上没有使用
   private CLD():number{
-    this.regSf.setD(false);
+    this.setD(false);
     return 0;
   }
 
   //清除中断禁止标志I,
   private CLI():number{
-    this.regSf.setI(false);
+    this.setI(false);
     this.irqCounter=this.irqFlag<<1;
     return 0;
   }
 
   //清除溢出标志V
   private CLV():number{
-    this.regSf.setV(false);
+    this.setV(false);
     return 0;
   }
 
@@ -797,9 +788,9 @@ export class Cpu{
     const operand:number= this.cpuBus.getValue(this.address);
     //模拟8bit无符号运算 即使temp是16bit无符号数字，结果也一样
     const temp=(this.regA -operand)&0xff;
-    this.regSf.setC(this.regA >= operand);
-    this.regSf.setZ(temp=== 0);
-    this.regSf.setN((temp & 0x0080)!==0);
+    this.setC(this.regA >= operand);
+    this.setZ(temp=== 0);
+    this.setN((temp & 0x0080)!==0);
     return 1;
   }
 
@@ -808,9 +799,9 @@ export class Cpu{
     const operand:number= this.cpuBus.getValue(this.address);
     //模拟八位运算
     const temp=(this.regX -operand)&0xff;
-    this.regSf.setC(this.regX >= operand);
-    this.regSf.setZ(temp=== 0);
-    this.regSf.setN((temp & 0x0080)!==0);
+    this.setC(this.regX >= operand);
+    this.setZ(temp=== 0);
+    this.setN((temp & 0x0080)!==0);
     return 0;
   }
 
@@ -819,9 +810,9 @@ export class Cpu{
     const operand:number= this.cpuBus.getValue(this.address);
     //模拟八位运算
     const temp=(this.regY -operand)&0xff;
-    this.regSf.setC(this.regY >= operand);
-    this.regSf.setZ(temp=== 0);
-    this.regSf.setN((temp & 0x0080)!==0);
+    this.setC(this.regY >= operand);
+    this.setZ(temp=== 0);
+    this.setN((temp & 0x0080)!==0);
     return 0;
   }
 
@@ -831,8 +822,8 @@ export class Cpu{
     let res:number = operand - 1;
     res=res&0xff;
     this.cpuBus.setValue(this.address, res);
-    this.regSf.setZ(res === 0);
-    this.regSf.setN((res & 0x0080)!==0);
+    this.setZ(res === 0);
+    this.setN((res & 0x0080)!==0);
     return 0;
   }
 
@@ -841,8 +832,8 @@ export class Cpu{
     this.regX--;
     //人工补位
     this.regX=this.regX&0xff;
-    this.regSf.setZ(this.regX===0);
-    this.regSf.setN((this.regX & 0x0080)!==0);
+    this.setZ(this.regX===0);
+    this.setN((this.regX & 0x0080)!==0);
     return 0;
   }
 
@@ -851,8 +842,8 @@ export class Cpu{
     this.regY--;
     //人工补位
     this.regY=this.regY&0xff;
-    this.regSf.setZ(this.regY===0);
-    this.regSf.setN((this.regY & 0x0080)!==0);
+    this.setZ(this.regY===0);
+    this.setN((this.regY & 0x0080)!==0);
     return 0;
   }
 
@@ -860,8 +851,8 @@ export class Cpu{
   private EOR():number{
     const operand:number = this.cpuBus.getValue(this.address);
     this.regA = this.regA ^ operand;
-    this.regSf.setZ(this.regA === 0);
-    this.regSf.setN((this.regA & 0x0080)!==0);
+    this.setZ(this.regA === 0);
+    this.setN((this.regA & 0x0080)!==0);
     return 1;
   }
 
@@ -872,8 +863,8 @@ export class Cpu{
     //溢出截取
     res=res&0xff;
     this.cpuBus.setValue(this.address,res);
-    this.regSf.setZ((res & 0x00FF)=== 0);
-    this.regSf.setN((res & 0x0080)!==0);
+    this.setZ((res & 0x00FF)=== 0);
+    this.setN((res & 0x0080)!==0);
     return 0;
   }
 
@@ -882,8 +873,8 @@ export class Cpu{
     this.regX++;
     //溢出截取
     this.regX=this.regX&0xff;
-    this.regSf.setZ(this.regX === 0);
-    this.regSf.setN((this.regX & 0x0080)!==0);
+    this.setZ(this.regX === 0);
+    this.setN((this.regX & 0x0080)!==0);
     return 0;
   }
 
@@ -892,8 +883,8 @@ export class Cpu{
     this.regY++;
     //溢出截取
     this.regY=this.regY&0xff;
-    this.regSf.setZ(this.regY === 0);
-    this.regSf.setN((this.regY & 0x0080)!==0);
+    this.setZ(this.regY === 0);
+    this.setN((this.regY & 0x0080)!==0);
     return 0;
   }
 
@@ -918,8 +909,8 @@ export class Cpu{
   private LDA():number{
     const operand:number=this.cpuBus.getValue(this.address);
     this.regA=operand;
-    this.regSf.setZ(this.regA === 0);
-    this.regSf.setN((this.regA & 0x0080)!==0);
+    this.setZ(this.regA === 0);
+    this.setN((this.regA & 0x0080)!==0);
     return 1;
   }
 
@@ -927,8 +918,8 @@ export class Cpu{
   private LDX():number{
     const operand:number=this.cpuBus.getValue(this.address);
     this.regX=operand;
-    this.regSf.setZ(this.regX === 0);
-    this.regSf.setN((this.regX & 0x0080)!==0);
+    this.setZ(this.regX === 0);
+    this.setN((this.regX & 0x0080)!==0);
     return 1;
   }
 
@@ -936,8 +927,8 @@ export class Cpu{
   private LDY():number{
     const operand:number=this.cpuBus.getValue(this.address);
     this.regY=operand;
-    this.regSf.setZ(this.regY === 0);
-    this.regSf.setN((this.regY & 0x0080)!==0);
+    this.setZ(this.regY === 0);
+    this.setN((this.regY & 0x0080)!==0);
     return 1;
   }
 
@@ -946,17 +937,17 @@ export class Cpu{
     if (this.opcodeMapTable[this.opcode].addressMode ===AddressMode.IMP){
       //IMP(Accumulator)累加器寻址模式下，直接赋值给A寄存器
       const temp:number = this.regA >> 1;
-      this.regSf.setC((this.regA & 0x0001)!==0);
-      this.regSf.setZ((temp & 0x00FF) === 0);
-      this.regSf.setN((temp & 0x80)!==0);
+      this.setC((this.regA & 0x0001)!==0);
+      this.setZ((temp & 0x00FF) === 0);
+      this.setN((temp & 0x80)!==0);
       this.regA = temp & 0x00FF;
     }else{
       //其他模式下，先取走操作符，再对操作符赋值，最后再写回去
       const operand:number = this.cpuBus.getValue(this.address);
       const temp:number = operand >> 1;
-      this.regSf.setC((operand & 0x0001)!==0);
-      this.regSf.setZ((temp & 0x00FF) === 0);
-      this.regSf.setN((temp & 0x80)!==0);
+      this.setC((operand & 0x0001)!==0);
+      this.setZ((temp & 0x00FF) === 0);
+      this.setN((temp & 0x80)!==0);
       this.cpuBus.setValue(this.address,temp);
     }
     return 0;
@@ -981,8 +972,8 @@ export class Cpu{
   private ORA():number{
     const operand:number=this.cpuBus.getValue(this.address);
     this.regA=operand|this.regA;
-    this.regSf.setZ(this.regA === 0);
-    this.regSf.setN((this.regA & 0x0080)!==0);
+    this.setZ(this.regA === 0);
+    this.setN((this.regA & 0x0080)!==0);
     return 1;
   }
 
@@ -994,27 +985,27 @@ export class Cpu{
 
   //将状态FLAG压入栈顶,
   private PHP():number{
-    const sfData:number=this.regSf.getData();
+    const sfData:number=this.getStatus();
     this.stackPush(sfData|1<<4|1<<5);
-    this.regSf.setB(false);
-    this.regSf.setU(false);
+    this.setB(false);
+    this.setU(false);
     return 0;
   }
 
   //将栈顶给累加器A
   private PLA():number{
     this.regA=this.stackPop();
-    this.regSf.setZ(this.regA === 0);
-    this.regSf.setN((this.regA & 0x0080)!==0);
+    this.setZ(this.regA === 0);
+    this.setN((this.regA & 0x0080)!==0);
     return 0;
   }
 
   //将栈顶给Status寄存器中
   private PLP():number{
-    this.regSf.setData(this.stackPop());
-    this.regSf.setU(true);
-    this.regSf.setB(false);
-    if(!this.regSf.getI()){
+    this.setStatus(this.stackPop());
+    this.setU(true);
+    this.setB(false);
+    if(!this.getI()){
       this.irqCounter=this.irqFlag<<1;
     }
     return 0;
@@ -1024,18 +1015,18 @@ export class Cpu{
   private ROL():number{
     if (this.opcodeMapTable[this.opcode].addressMode ===AddressMode.IMP){
       //IMP(Accumulator)累加器寻址模式下，直接赋值给A寄存器
-      const temp:number= this.regA<< 1 | this.regSf.getC(); //ROL是循环左移操作，会将C标志位放到循环左移结果的最后一位
-      this.regSf.setC(temp >= 0x100);
-      this.regSf.setZ((temp & 0x00FF) === 0);
-      this.regSf.setN((temp & 0x80)!==0);
+      const temp:number= this.regA<< 1 | this.getC(); //ROL是循环左移操作，会将C标志位放到循环左移结果的最后一位
+      this.setC(temp >= 0x100);
+      this.setZ((temp & 0x00FF) === 0);
+      this.setN((temp & 0x80)!==0);
       this.regA = temp & 0x00FF;
     }else{
       //其他模式下，先取走操作符，再对操作符赋值，最后再写回去
       const operand:number=this.cpuBus.getValue(this.address);
-      const temp:number=operand << 1 |this.regSf.getC();
-      this.regSf.setC(temp >= 0x100);
-      this.regSf.setZ((temp & 0x00FF) === 0);
-      this.regSf.setN((temp & 0x80)!==0);
+      const temp:number=operand << 1 |this.getC();
+      this.setC(temp >= 0x100);
+      this.setZ((temp & 0x00FF) === 0);
+      this.setN((temp & 0x80)!==0);
       this.cpuBus.setValue(this.address, temp & 0x00FF);
     }
     return 0;
@@ -1045,18 +1036,18 @@ export class Cpu{
   private ROR():number{
     if (this.opcodeMapTable[this.opcode].addressMode ===AddressMode.IMP){
       //IMP(Accumulator)累加器寻址模式下，直接赋值给A寄存器
-      const temp:number= this.regA>> 1 | this.regSf.getC()<< 7; //ROR是循环右移操作，会将C标志位放到循环右移结果的第一位
-      this.regSf.setC((this.regA&1)!==0);
-      this.regSf.setZ((temp & 0x00FF) === 0);
-      this.regSf.setN((temp & 0x80)!==0);
+      const temp:number= this.regA>> 1 | this.getC()<< 7; //ROR是循环右移操作，会将C标志位放到循环右移结果的第一位
+      this.setC((this.regA&1)!==0);
+      this.setZ((temp & 0x00FF) === 0);
+      this.setN((temp & 0x80)!==0);
       this.regA = temp & 0x00FF;
     }else{
       //其他模式下，先取走操作符，再对操作符赋值，最后再写回去
       const operand:number=this.cpuBus.getValue(this.address);
-      const temp:number=operand >> 1 |this.regSf.getC()<< 7;
-      this.regSf.setC((operand&1)!==0);
-      this.regSf.setZ((temp & 0x00FF) === 0);
-      this.regSf.setN((temp & 0x80)!==0);
+      const temp:number=operand >> 1 |this.getC()<< 7;
+      this.setC((operand&1)!==0);
+      this.setZ((temp & 0x00FF) === 0);
+      this.setN((temp & 0x80)!==0);
       this.cpuBus.setValue(this.address, temp & 0x00FF);
     }
     return 0;
@@ -1064,15 +1055,15 @@ export class Cpu{
 
   //从中断返回
   private RTI():number{
-    this.regSf.setData(this.stackPop());
-    this.regSf.setB(false);
-    this.regSf.setU(true);
+    this.setStatus(this.stackPop());
+    this.setB(false);
+    this.setU(true);
     const lo:number=this.stackPop();
     const hi:number=this.stackPop()<<8;
     this.regPc=hi+lo;
     this.irqInProcess=0;
     // 若 IRQ 仍挂起且 I 已清，在下一条指令边界进入
-    if(this.irqFlag&&!this.regSf.getI()){
+    if(this.irqFlag&&!this.getI()){
       this.irqCounter=1;
     }
     return 0;
@@ -1090,31 +1081,31 @@ export class Cpu{
   //从累加器减去存储器和进位标志C,结果送累加器A
   private SBC():number{
     const operand:number= this.cpuBus.getValue(this.address);
-    const c:number=!this.regSf.getC()?1:0;
+    const c:number=!this.getC()?1:0;
     const sub:number= (this.regA - operand -c)&0xffff;
-    this.regSf.setC(!(sub & 0x100));
-    this.regSf.setV(((this.regA ^ sub) & ((~operand) ^ sub) & 0x80)!==0);
-    this.regSf.setZ((sub&0xff)===0);
-    this.regSf.setN((sub & 0x80)!==0);
+    this.setC(!(sub & 0x100));
+    this.setV(((this.regA ^ sub) & ((~operand) ^ sub) & 0x80)!==0);
+    this.setZ((sub&0xff)===0);
+    this.setN((sub & 0x80)!==0);
     this.regA = sub & 0xff;
     return 1;
   }
 
   //设置进位标志C
   private SEC():number{
-    this.regSf.setC(true);
+    this.setC(true);
     return 0;
   }
 
   //设置十进制模式标志D
   private SED():number{
-    this.regSf.setD(true);
+    this.setD(true);
     return 0;
   }
 
   //设置中断禁止标志I
   private SEI():number{
-    this.regSf.setI(true);
+    this.setI(true);
     return 0;
   }
 
@@ -1139,32 +1130,32 @@ export class Cpu{
   //将累加器A的内容送入变址寄存器X
   private TAX():number{
     this.regX=this.regA;
-    this.regSf.setZ(this.regX===0);
-    this.regSf.setN((this.regX&0x80)!==0);
+    this.setZ(this.regX===0);
+    this.setN((this.regX&0x80)!==0);
     return 0;
   }
 
   //将累加器A的内容送入变址寄存器Y
   private TAY():number{
     this.regY=this.regA;
-    this.regSf.setZ(this.regY===0);
-    this.regSf.setN((this.regY&0x80)!==0);
+    this.setZ(this.regY===0);
+    this.setN((this.regY&0x80)!==0);
     return 0;
   }
 
   //将栈指针SP内容送入变址寄存器X
   private TSX():number{
     this.regX=this.regSp;
-    this.regSf.setZ(this.regX===0);
-    this.regSf.setN((this.regX&0x80)!==0);
+    this.setZ(this.regX===0);
+    this.setN((this.regX&0x80)!==0);
     return 0;
   }
 
   //将变址寄存器X的内容送入累加器A
   private TXA():number{
     this.regA=this.regX;
-    this.regSf.setZ(this.regA===0);
-    this.regSf.setN((this.regA&0x80)!==0);
+    this.setZ(this.regA===0);
+    this.setN((this.regA&0x80)!==0);
     return 0;
   }
 
@@ -1177,8 +1168,8 @@ export class Cpu{
   //将变址寄存器Y的内容送入累加器A
   private TYA():number{
     this.regA=this.regY;
-    this.regSf.setZ(this.regA===0);
-    this.regSf.setN((this.regA&0x80)!==0);
+    this.setZ(this.regA===0);
+    this.setN((this.regA&0x80)!==0);
     return 0;
   }
 
@@ -1216,172 +1207,9 @@ export class Cpu{
     }
   }
 
-  //执行指令
-  private impInstructions(name:string):number{
-    //console.log('开始执行命令:'+name);
-    switch (name) {
-    case 'ADC':
-      return this.ADC();
-    case 'AND':
-      return this.AND();
-    case 'ASL':
-      return this.ASL();
-    case 'BCC':
-      return this.BCC();
-    case 'BCS':
-      return this.BCS();
-    case 'BEQ':
-      return this.BEQ();
-    case 'BIT':
-      return this.BIT();
-    case 'BMI':
-      return this.BMI();
-    case 'BNE':
-      return this.BNE();
-    case 'BPL':
-      return this.BPL();
-    case 'BRK':
-      return this.BRK();
-    case 'BVC':
-      return this.BVC();
-    case 'BVS':
-      return this.BVS();
-    case 'CLC':
-      return this.CLC();
-    case 'CLD':
-      return this.CLD();
-    case 'CLI':
-      return this.CLI();
-    case 'CLV':
-      return this.CLV();
-    case 'CMP':
-      return this.CMP();
-    case 'CPX':
-      return this.CPX();
-    case 'CPY':
-      return this.CPY();
-    case 'DEC':
-      return this.DEC();
-    case 'DEX':
-      return this.DEX();
-    case 'DEY':
-      return this.DEY();
-    case 'EOR':
-      return this.EOR();
-    case 'INC':
-      return this.INC();
-    case 'INX':
-      return this.INX();
-    case 'INY':
-      return this.INY();
-    case 'JMP':
-      return this.JMP();
-    case 'JSR':
-      return this.JSR();
-    case 'LDA':
-      return this.LDA();
-    case 'LDX':
-      return this.LDX();
-    case 'LDY':
-      return this.LDY();
-    case 'LSR':
-      return this.LSR();
-    case 'NOP':
-      return this.NOP();
-    case 'ORA':
-      return this.ORA();
-    case 'PHA':
-      return this.PHA();
-    case 'PHP':
-      return this.PHP();
-    case 'PLA':
-      return this.PLA();
-    case 'PLP':
-      return this.PLP();
-    case 'ROL':
-      return this.ROL();
-    case 'ROR':
-      return this.ROR();
-    case 'RTI':
-      return this.RTI();
-    case 'RTS':
-      return this.RTS();
-    case 'SBC':
-      return this.SBC();
-    case 'SEC':
-      return this.SEC();
-    case 'SED':
-      return this.SED();
-    case 'SEI':
-      return this.SEI();
-    case 'STA':
-      return this.STA();
-    case 'STX':
-      return this.STX();
-    case 'STY':
-      return this.STY();
-    case 'TAX':
-      return this.TAX();
-    case 'TAY':
-      return this.TAY();
-    case 'TSX':
-      return this.TSX();
-    case 'TXA':
-      return this.TXA();
-    case 'TXS':
-      return this.TXS();
-    case 'TYA':
-      return this.TYA();
-    case 'SLO':
-      return this.SLO();
-    case 'RLA':
-      return this.RLA();
-    case 'SRE':
-      return this.SRE();
-    case 'RRA':
-      return this.RRA();
-    case 'SAX':
-      return this.SAX();
-    case 'LAX':
-      return this.LAX();
-    case 'DCP':
-      return this.DCP();
-    case 'ISC':
-      return this.ISC();
-    case 'AAC':
-      return this.AAC();
-    case 'ASR':
-      return this.ASR();
-    case 'ARR':
-      return this.ARR();
-    case 'ATX':
-      return this.ATX();
-    case 'AXS':
-      return this.AXS();
-    case 'ANE':
-      return this.ANE();
-    case 'AHX':
-      return this.AHX();
-    case 'SHY':
-      return this.SHY();
-    case 'SHX':
-      return this.SHX();
-    case 'TAS':
-      return this.TAS();
-    case 'LAS':
-      return this.LAS();
-    case 'KIL':
-      this.halted=true;
-      return 0;
-    default:
-      // 非法/未实现操作码：当作 NOP，避免刷屏；多数游戏偶发踩到 unofficial NOP
-      return 0;
-    }
-  }
-
   private setZN(value:number):void{
-    this.regSf.setZ((value&0xff)===0);
-    this.regSf.setN((value&0x80)!==0);
+    this.setZ((value&0xff)===0);
+    this.setN((value&0x80)!==0);
   }
 
   // ASL 后 ORA
@@ -1389,7 +1217,7 @@ export class Cpu{
     const operand:number=this.cpuBus.getValue(this.address);
     const shifted:number=operand<<1;
     this.cpuBus.setValue(this.address,shifted&0xff);
-    this.regSf.setC(shifted>0xff);
+    this.setC(shifted>0xff);
     this.regA=(this.regA|(shifted&0xff))&0xff;
     this.setZN(this.regA);
     return 0;
@@ -1398,9 +1226,9 @@ export class Cpu{
   // ROL 后 AND
   private RLA():number{
     const operand:number=this.cpuBus.getValue(this.address);
-    const shifted:number=(operand<<1)|this.regSf.getC();
+    const shifted:number=(operand<<1)|this.getC();
     this.cpuBus.setValue(this.address,shifted&0xff);
-    this.regSf.setC((shifted&0x100)!==0);
+    this.setC((shifted&0x100)!==0);
     this.regA=this.regA&(shifted&0xff);
     this.setZN(this.regA);
     return 0;
@@ -1409,7 +1237,7 @@ export class Cpu{
   // LSR 后 EOR
   private SRE():number{
     const operand:number=this.cpuBus.getValue(this.address);
-    this.regSf.setC((operand&1)!==0);
+    this.setC((operand&1)!==0);
     const shifted:number=operand>>1;
     this.cpuBus.setValue(this.address,shifted);
     this.regA=(this.regA^shifted)&0xff;
@@ -1420,9 +1248,9 @@ export class Cpu{
   // ROR 后 ADC
   private RRA():number{
     const operand:number=this.cpuBus.getValue(this.address);
-    const shifted:number=(operand>>1)|(this.regSf.getC()<<7);
+    const shifted:number=(operand>>1)|(this.getC()<<7);
     this.cpuBus.setValue(this.address,shifted&0xff);
-    this.regSf.setC((operand&1)!==0);
+    this.setC((operand&1)!==0);
     this.ADC();
     return 0;
   }
@@ -1446,7 +1274,7 @@ export class Cpu{
     const operand:number=(this.cpuBus.getValue(this.address)-1)&0xff;
     this.cpuBus.setValue(this.address,operand);
     const diff:number=(this.regA-operand)&0xffff;
-    this.regSf.setC((diff&0x100)===0);
+    this.setC((diff&0x100)===0);
     this.setZN(diff);
     return 0;
   }
@@ -1463,14 +1291,14 @@ export class Cpu{
   private AAC():number{
     this.regA&=this.cpuBus.getValue(this.address);
     this.setZN(this.regA);
-    this.regSf.setC((this.regA&0x80)!==0);
+    this.setC((this.regA&0x80)!==0);
     return 0;
   }
 
   // AND 后 LSR
   private ASR():number{
     this.regA&=this.cpuBus.getValue(this.address);
-    this.regSf.setC((this.regA&1)!==0);
+    this.setC((this.regA&1)!==0);
     this.regA>>=1;
     this.setZN(this.regA);
     return 0;
@@ -1479,11 +1307,11 @@ export class Cpu{
   // AND 后 ROR，C=结果 bit6，V=bit6 xor bit5
   private ARR():number{
     const value:number=this.regA&this.cpuBus.getValue(this.address);
-    const result:number=(value>>1)|(this.regSf.getC()<<7);
+    const result:number=(value>>1)|(this.getC()<<7);
     this.regA=result&0xff;
     this.setZN(this.regA);
-    this.regSf.setC((result&0x40)!==0);
-    this.regSf.setV(((result>>6)&1)!==((result>>5)&1));
+    this.setC((result&0x40)!==0);
+    this.setV(((result>>6)&1)!==((result>>5)&1));
     return 0;
   }
 
@@ -1500,7 +1328,7 @@ export class Cpu{
     const operand:number=this.cpuBus.getValue(this.address);
     const value:number=(this.regA&this.regX)-operand;
     this.regX=value&0xff;
-    this.regSf.setC((value&0x100)===0);
+    this.setC((value&0x100)===0);
     this.setZN(this.regX);
     return 0;
   }

@@ -97,6 +97,10 @@ export function Emulator({
   const [error, setError] = useState('');
   const [renderer, setRenderer] = useState<NesRendererKind>('2d');
   const [renderers, setRenderers] = useState<NesRendererKind[]>(['2d']);
+  const [debug, setDebug] = useState(false);
+  const [stats, setStats] = useState({ presentFps: 0, simFps: 0 });
+  const debugRef = useRef(debug);
+  debugRef.current = debug;
   const speedRef = useRef(speed);
   const scaleRef = useRef(scale);
   const aspectRef = useRef(aspect);
@@ -128,7 +132,15 @@ export function Emulator({
     const audio = new NesAudioOut();
     const nes = new Nes();
     nes.onFrame = (frame) => drawRef.current(frame);
+    nes.onPresent = () => screenRef.current?.present();
+    nes.onStats = (next) => {
+      setStats({
+        presentFps: Math.round(next.presentFps),
+        simFps: Math.round(next.simFps),
+      });
+    };
     nes.onAudio = (frame) => audio.push(frame);
+    nes.setDebug(debugRef.current);
     nes.setSpeed(Number(speedRef.current));
     audio.setSpeed(Number(speedRef.current));
     try {
@@ -247,6 +259,10 @@ export function Emulator({
     nesRef.current?.redraw();
   }, [scale]);
 
+  useEffect(() => {
+    nesRef.current?.setDebug(debug);
+  }, [debug]);
+
   function applySpeed(value: string) {
     setSpeed(value);
     const multiplier = Number(value);
@@ -301,6 +317,9 @@ export function Emulator({
       stage={
         <>
           <canvas key={renderer} ref={canvasRef} />
+          {debug && started ? (
+            <p className="fps-debug">画面 {stats.presentFps} · 模拟 {stats.simFps}</p>
+          ) : null}
           {error ? (
             <div className="stage-overlay">
               <Text color="red">{error}</Text>
@@ -321,6 +340,9 @@ export function Emulator({
       >
         {error ? <Text color="red">{error}</Text> : null}
         <Button onClick={togglePause}>{pauseLabel}</Button>
+        <Button variant={debug ? 'solid' : 'soft'} onClick={() => setDebug((on) => !on)}>
+          {debug ? '调试：开' : '调试：关'}
+        </Button>
         <Flex direction="column" gap="1">
           <Text size="2" color="gray">倍速</Text>
           <Select.Root value={speed} onValueChange={applySpeed}>

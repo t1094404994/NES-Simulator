@@ -35,6 +35,8 @@ export interface NesPresenter {
   getStageRatio(): number;
   resize(cssWidth: number, cssHeight: number): void;
   draw(frame: NesFrame): void;
+  /** 用当前纹理再画一次，不重新上传。 */
+  present(): void;
   dispose(): void;
 }
 
@@ -123,7 +125,10 @@ export class NesScreen implements NesPresenter {
       }
     }
     this.sourceCtx.putImageData(this.imageData, 0, 0);
+    this.present();
+  }
 
+  present(): void {
     const bitmapW = this.canvas.width || NES_WIDTH;
     const bitmapH = this.canvas.height || NES_HEIGHT;
     const { dx, dy, destW, destH } = frameDestRect(bitmapW, bitmapH, this.pixelScale);

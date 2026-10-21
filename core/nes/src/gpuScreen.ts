@@ -218,7 +218,7 @@ export class NesGpuScreen implements NesPresenter {
     this.context = null;
   }
 
-  private present(): void {
+  present(): void {
     const device = this.device;
     const context = this.context;
     const pipeline = this.pipeline;

@@ -172,7 +172,7 @@ export class NesGlScreen implements NesPresenter {
     lose?.loseContext();
   }
 
-  private present(): void {
+  present(): void {
     const gl = this.gl;
     const bitmapW = this.canvas.width || NES_WIDTH;
     const bitmapH = this.canvas.height || NES_HEIGHT;

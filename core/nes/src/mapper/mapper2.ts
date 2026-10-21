@@ -2,11 +2,11 @@ import type {Mapper,CartridgeReader} from '../cartridge';
 export class Mapper2 implements Mapper{
   //TODO如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 卡带上为什么会没有图案表？
   private chRamPtr:ArrayBuffer;
-  private chRamPtrDataView:DataView;
+  private chRamPtrUint8Array:Uint8Array;
   //RPG数据视图
-  private rpgDataView:DataView;
+  private rpgUint8Array:Uint8Array;
   //vRom数据视图
-  private vromDataView:DataView;
+  private vromUint8Array:Uint8Array;
   //卡带
   private cartridge:CartridgeReader;
   public nametableMirror:number;
@@ -23,23 +23,23 @@ export class Mapper2 implements Mapper{
   public reset(_cartridge:CartridgeReader,hasVrom:boolean):void{
     if(!hasVrom){
       this.chRamPtr=new ArrayBuffer(8192);
-      this.chRamPtrDataView=new DataView(this.chRamPtr);
+      this.chRamPtrUint8Array=new Uint8Array(this.chRamPtr);
     }else{
       this.chRamPtr=null;
-      this.chRamPtrDataView=null;
+      this.chRamPtrUint8Array=null;
     }
     this.cartridge=_cartridge;
     this.prgSelect16kbLo=0;
     this.prgSelect16kbHi=this.cartridge.romNum-1;
     //根据卡带数据 设置RPG和VROM数据视图
-    this.rpgDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.programOffset,this.cartridge.romNum*16384);
-    this.vromDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.vromOffset);
+    this.rpgUint8Array=new Uint8Array(this.cartridge.cartridgeData,this.cartridge.programOffset,this.cartridge.romNum*16384);
+    this.vromUint8Array=new Uint8Array(this.cartridge.cartridgeData,this.cartridge.vromOffset);
   }
 
   public clear():void{
-    this.chRamPtrDataView=null;
-    this.rpgDataView=null;
-    this.vromDataView=null;
+    this.chRamPtrUint8Array=null;
+    this.rpgUint8Array=null;
+    this.vromUint8Array=null;
     this.chRamPtr=null;
     this.cartridge=null;
   }
@@ -49,10 +49,10 @@ export class Mapper2 implements Mapper{
     //CPU读取两个16KB的代码段
     if (busAddress <= 0xbfff){
       const programAddr:number = 0x4000 * this.prgSelect16kbLo + (busAddress & 0x3fff);
-      return this.rpgDataView.getUint8(programAddr);
+      return this.rpgUint8Array[programAddr];
     }else{
       const programAddr:number = 0x4000 * this.prgSelect16kbHi + (busAddress & 0x3fff);
-      return this.rpgDataView.getUint8(programAddr);
+      return this.rpgUint8Array[programAddr];
     }
   }
   //CPU写入程序数据
@@ -74,16 +74,16 @@ export class Mapper2 implements Mapper{
   //PPU读取图案表 ppu总线地址
   public ppuReadPt(busAddress:number):number{
     if(this.cartridge.vromNum===0){
-      return this.chRamPtrDataView.getUint8(busAddress);
+      return this.chRamPtrUint8Array[busAddress];
     }else{
-      return this.vromDataView.getUint8(busAddress);
+      return this.vromUint8Array[busAddress];
     }
   }
 
   //PPU写入图案表
   public ppuWritePt(busAddress:number,value:number):void{
     if(this.cartridge.vromNum===0){
-      this.chRamPtrDataView.setUint8(busAddress,value);
+      this.chRamPtrUint8Array[busAddress]=value;
     }else{
       console.warn(busAddress+':'+value+'卡带ROM不能写入');
     }

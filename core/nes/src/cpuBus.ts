@@ -176,7 +176,7 @@ export class CpuBus{
     else if(busAddress===0x4014){
       //console.log('CPU直接把'+value.toString(16)+'起始的精灵RAM的引用数据传入PPU');
       this.cpu.dmaSleep();
-      const page:DataView=this.getPage(value);
+      const page:Uint8Array=this.getPage(value);
       this.ppu.oamDma(page);
     }
     //手柄
@@ -201,6 +201,8 @@ export class CpuBus{
     //卡带
     else{
       this.cartridgeReader.mapper.cpuWriteRpg(busAddress,value);
+      // CHR bank 和镜像切换发生在 $8000+，下一像素要重新取图案
+      this.ppu.ppuBus.bump();
     }
     // //卡带
     // else if(busAddress>=0x8000){
@@ -212,7 +214,7 @@ export class CpuBus{
   }
 
   //获取一页（256 字节）数据，供 $4014 OAM DMA 使用；支持 RAM / WRAM / PRG
-  public getPage(pageId:number):DataView{
+  public getPage(pageId:number):Uint8Array{
     const address=(pageId&0xff)<<8;
     if(address<0x2000){
       return this.cpuRam.getPage(address&0x700);
@@ -221,18 +223,17 @@ export class CpuBus{
       return this.cartridgeReader.getPage(address-0x6000);
     }
     // PRG ROM 或其他区域：逐字节读取到临时缓冲
-    const buf=new ArrayBuffer(256);
-    const view=new DataView(buf);
+    const page=new Uint8Array(256);
     for(let i=0;i<256;i++){
-      view.setUint8(i,this.getValue(address+i));
+      page[i]=this.getValue(address+i);
     }
-    return view;
+    return page;
   }
 
   //尝试IRQ中断：始终挂起；I=0 时在下一条指令边界进入
   public tryIRQ():void{
     this.cpu.irqFlag=1;
-    if(!this.cpu.regSf.getI()){
+    if((this.cpu.status&0x04)===0){
       this.cpu.irqCounter=1;
     }
   }

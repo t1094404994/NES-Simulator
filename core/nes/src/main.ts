@@ -24,6 +24,9 @@ export class Main {
     this.nes.onFrame = (frame) => {
       this.screen?.draw(frame);
     };
+    this.nes.onPresent = () => {
+      this.screen?.present();
+    };
     this.nes.onAudio = (frame) => {
       this.audioOut.push(frame);
     };

@@ -1,6 +1,6 @@
 export { Main } from './main';
 export { Nes, NES_WIDTH, NES_HEIGHT } from './nes';
-export type { NesFrame, NesFrameTile, NesFrameMode, NesAudioFrame, NesPlayer } from './nes';
+export type { NesFrame, NesFrameTile, NesFrameMode, NesAudioFrame, NesPlayer, NesStats } from './nes';
 export { NesScreen, frameDestRect } from './screen';
 export type { NesAspect, NesPixelScale, NesPresenter } from './screen';
 export { NesGlScreen } from './glScreen';

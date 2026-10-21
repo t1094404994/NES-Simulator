@@ -33,14 +33,14 @@ class RegCtrl{
 export class Mapper1 implements Mapper{
   //TODO如果卡带上没有图案表的话，则新建一块8KB的ram作为图案表 卡带上为什么会没有图案表？
   private chRamPtr:ArrayBuffer;
-  private chRamPtrDataView:DataView;
+  private chRamPtrUint8Array:Uint8Array;
   //扩展的RAM
   public addRam:ArrayBuffer;
-  public addRamDataView:DataView;
+  public addRamDataView:Uint8Array;
   //RPG数据视图
-  private rpgDataView:DataView;
+  private rpgUint8Array:Uint8Array;
   //vRom数据视图
-  private vromDataView:DataView;
+  private vromUint8Array:Uint8Array;
   //卡带
   private cartridge:CartridgeReader;
   //reg_ctrl
@@ -68,20 +68,20 @@ export class Mapper1 implements Mapper{
   public reset(_cartridge:CartridgeReader,hasVrom:boolean):void{
     if(!hasVrom){
       this.chRamPtr=new ArrayBuffer(0x2000);
-      this.chRamPtrDataView=new DataView(this.chRamPtr);
+      this.chRamPtrUint8Array=new Uint8Array(this.chRamPtr);
     }else{
       this.chRamPtr=null;
-      this.chRamPtrDataView=null;
+      this.chRamPtrUint8Array=null;
     }
     this.addRam=new ArrayBuffer(0x2000);
-    this.addRamDataView=new DataView(this.addRam);
+    this.addRamDataView=new Uint8Array(this.addRam);
     //重置
     this.regCtrl=new RegCtrl();
     this.regCtrl.setData(0x1c);
     this.cartridge=_cartridge;
     //根据卡带数据 设置RPG和VROM数据视图
-    this.rpgDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.programOffset,this.cartridge.romNum*16384);
-    this.vromDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.vromOffset);
+    this.rpgUint8Array=new Uint8Array(this.cartridge.cartridgeData,this.cartridge.programOffset,this.cartridge.romNum*16384);
+    this.vromUint8Array=new Uint8Array(this.cartridge.cartridgeData,this.cartridge.vromOffset);
     //重置
     this.numWrite=0;
     this.regLoad=0;
@@ -95,9 +95,9 @@ export class Mapper1 implements Mapper{
   }
 
   public clear():void{
-    this.chRamPtrDataView=null;
-    this.rpgDataView=null;
-    this.vromDataView=null;
+    this.chRamPtrUint8Array=null;
+    this.rpgUint8Array=null;
+    this.vromUint8Array=null;
     this.chRamPtr=null;
     this.cartridge=null;
   }
@@ -115,7 +115,7 @@ export class Mapper1 implements Mapper{
       //CPU读取一个32KB的代码段
       programAddr = 0x8000 * this.prgSelect32kb + (busAddress & 0x7fff);
     }
-    return this.rpgDataView.getUint8(programAddr);
+    return this.rpgUint8Array[programAddr];
   }
   //CPU写入程序数据
   public cpuWriteRpg(busAddress:number,value:number):void{
@@ -188,17 +188,17 @@ export class Mapper1 implements Mapper{
   public cpuReadAddRom(busAddress:number):number{
     //因为卡带数据在总线中从0x8000 二进制即10000000 0000000  所以只需把最高位截掉，即可得到相对于卡带的位置 
     //TODO注意，文件头不占据总线中的位置 不确定
-    return this.addRamDataView.getUint8(busAddress-0x6000);
+    return this.addRamDataView[busAddress-0x6000];
   }
   //CPU写入扩展ROM
   public cpuWriteAddRom(busAddress:number,value:number):void{
-    return this.addRamDataView.setUint8(busAddress-0x6000,value);
+    this.addRamDataView[busAddress-0x6000]=value;
   }
 
   //PPU读取图案表 ppu总线地址
   public ppuReadPt(busAddress:number):number{
     if(this.cartridge.vromNum===0){
-      return this.chRamPtrDataView.getUint8(busAddress);
+      return this.chRamPtrUint8Array[busAddress];
     }else{
       let vromAddr:number;
       if (this.regCtrl.getPatternBankMode()){
@@ -212,14 +212,14 @@ export class Mapper1 implements Mapper{
         //模式为0时，PPU读取一个8KB的图案表
         vromAddr = 0x2000 * this.ptSelect8kb + (busAddress & 0x1fff);
       }
-      return this.vromDataView.getUint8(vromAddr);
+      return this.vromUint8Array[vromAddr];
     }
   }
 
   //PPU写入图案表
   public ppuWritePt(busAddress:number,value:number):void{
     if(this.cartridge.vromNum===0){
-      this.chRamPtrDataView.setUint8(busAddress,value);
+      this.chRamPtrUint8Array[busAddress]=value;
     }else{
       console.warn(busAddress+':'+value+'卡带VROM不能写入');
     }

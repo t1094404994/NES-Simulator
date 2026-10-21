@@ -1,17 +1,27 @@
 import { Cpu } from './cpu';
-import {Oamram, OAMSprite, PpuBus } from './ppuBus';
+import {Oamram, PpuBus } from './ppuBus';
 
 //PPU控制寄存器 CPU总线的0x2000
 export class PpuCtrl{
   private data:number;
+  public bgTable=0;
+  public spTable=0;
+  public sprite16=0;
+  public nmi=0;
+  public addrInc=1;
   constructor(){
     this.reset();
   }
   public reset():void{
-    this.data=0;
+    this.setData(0);
   }
   public setData(value:number):void{
     this.data=value;
+    this.bgTable=(value&(1<<4))?1:0;
+    this.spTable=(value&(1<<3))?1:0;
+    this.sprite16=(value&(1<<5))?1:0;
+    this.nmi=(value&(1<<7))?1:0;
+    this.addrInc=(value&(1<<2))?32:1;
   }
   public getData():number{
     return this.data;
@@ -51,14 +61,24 @@ export class PpuCtrl{
 //PPU掩码寄存器 CPU总线的0x2001
 export class PpuMask{
   private data:number;
+  public showBg=0;
+  public showSpr=0;
+  public edgeBg=0;
+  public edgeSpr=0;
+  public rendering=false;
   constructor(){
     this.reset();
   }
   public reset():void{
-    this.data=0;
+    this.setData(0);
   }
   public setData(value:number):void{
     this.data=value;
+    this.edgeBg=(value&0x02)?1:0;
+    this.edgeSpr=(value&0x04)?1:0;
+    this.showBg=(value&0x08)?1:0;
+    this.showSpr=(value&0x10)?1:0;
+    this.rendering=(value&0x18)!==0;
   }
   public getData():number{
     return this.data;
@@ -91,7 +111,7 @@ export class PpuMask{
   }
   /** Nesdev：背景或精灵任一开启即为 rendering enabled */
   public isRenderingEnabled():boolean{
-    return !!(this.data&(1<<3))||!!(this.data&(1<<4));
+    return this.rendering;
   }
   //bit5,6,7 NTSC PAL 颜色强调使能标志位 rgb
 }
@@ -140,78 +160,99 @@ export class PpuStatus{
 
 export class REGV{
   private data:number;
+  public xScroll=0;
+  public yScroll=0;
+  public yFine=0;
+  public ntX=0;
+  public ntY=0;
   constructor(){
     this.reset();
   }
   public reset():void{
-    this.data=0;
+    this.setData(0);
   }
   public setData(value:number):void{
     this.data=value;
+    this.sync();
   }
   public getData():number{
     return this.data;
+  }
+
+  private sync():void{
+    const data=this.data;
+    this.xScroll=data&0x1f;
+    this.yScroll=(data&0x3e0)>>5;
+    this.yFine=(data&0x7000)>>12;
+    this.ntX=(data&0x400)?1:0;
+    this.ntY=(data&0x800)?1:0;
   }
 
   //设置寄存器的低八位值
   public setLow8(value:number):void{
     this.data &= 0xff00;
     this.data |= value;
+    this.sync();
   }
   //设置寄存器的9-14位值. 更高的数值会被映射下去
   public setHi6(value:number):void{ 
     this.data &= 0x00ff;
     this.data |= ((value & 0x3f) << 8);
+    this.sync();
   }
   //设置NameTable的数值
   public setNametable(value:number):void{ 
     this.data &= 0xf3ff;
     this.data |= ((value & 0x3) << 10);
+    this.sync();
   }
   //设置NameTable_X的数值
   public setNametableX(value:number):void{ 
     if (value) this.data |= 1 << 10;
     else this.data &= 0xfbff;
+    this.sync();
   }
   //设置NameTable_Y的数值
   public setNametableY(value:number):void{ 
     if (value) this.data |= 1 << 11;
     else this.data &= 0xf7ff;
+    this.sync();
   }
   //设置x_scroll的数值
   public setXscroll(value:number):void{ 
     this.data &= 0xffe0;
     this.data |= (value & 0x1f);
+    this.sync();
   }
   //设置y_scroll的数值
   public setYscroll(value:number):void{ 
     this.data &= 0xfc1f;
     this.data |= ((value & 0x1f) << 5);
+    this.sync();
   }
   //设置y_fine的数值
   public setYfine(value:number):void{
     this.data &= 0x8fff;
     this.data |= ((value & 0x7) << 12);
+    this.sync();
   }
   //获取x_scroll的数值
   public getXscroll():number{ 
-    return this.data & 0x1f;
+    return this.xScroll;
   }
   public getNametableX():number{
-    if (this.data & (1 << 10)) return 1;
-    else return 0;
+    return this.ntX;
   }
   public getNametableY():number{
-    if (this.data & (1 << 11)) return 1;
-    else return 0;
+    return this.ntY;
   }
   //获取y_scroll的数值
   public getYscroll():number{ 
-    return (this.data & 0x3e0) >> 5;
+    return this.yScroll;
   }
   //获取y_fine的数值
   public getYfine():number{ 
-    return (this.data & 0x7000) >> 12;
+    return this.yFine;
   }
 }
 
@@ -244,8 +285,7 @@ export class Ppu{
   public scanline:number;
   //这条扫描线的第几个周期
   public cycle:number; 
-  public scanlineSprDx:ArrayBuffer;
-  public scanlineSprDxView:DataView;
+  public scanlineSprDx:Uint8Array;
   //下一条扫描线上需要渲染的精灵个数
   public scanlineSprCnt:number;
   //CPU总线
@@ -257,14 +297,33 @@ export class Ppu{
   public frameDx:number;
   //该帧
   public frameFinished:number;
-  //渲染数据
-  private frameData:ArrayBuffer;
-  public frameDataView:DataView;
+  //渲染数据。构造后不再更换缓冲，宿主可直接查看。
+  public readonly frameData:ArrayBuffer;
+  public readonly frameBytes:Uint8Array;
+  public readonly frameWords:Uint32Array;
 
-  //调色板数据 [64][3] 没有A值
-  private palette:Array<Array<number>>;
+  //调色板，小端 R | G<<8 | B<<16 | A<<24
+  private paletteRgba:Uint32Array;
   private suppressVblank:boolean;
   private nmiDelayDots:number;
+  /** $2000/$2001/$2005/$2006 以及 OAM 之外的渲染状态变化。 */
+  private renderEpoch=0;
+  private oamEpoch=0;
+  private bgValid=false;
+  private bgY=-2;
+  private bgRenderEpoch=-1;
+  private bgVramEpoch=-1;
+  private bgLo=0;
+  private bgHi=0;
+  private bgPal=0;
+  private sprX=new Uint8Array(8);
+  private sprAttr=new Uint8Array(8);
+  private sprLo=new Uint8Array(8);
+  private sprHi=new Uint8Array(8);
+  private sprLine=-2;
+  private sprRenderEpoch=-1;
+  private sprVramEpoch=-1;
+  private sprOamEpoch=-1;
 
   private cpu:Cpu;
 
@@ -274,6 +333,12 @@ export class Ppu{
     this.regStatus=new PpuStatus();
     this.tmpAddress=new REGV();
     this.dataAddress=new REGV();
+    this.frameData=new ArrayBuffer(256*240*4);
+    this.frameBytes=new Uint8Array(this.frameData);
+    this.frameWords=new Uint32Array(this.frameData);
+    this.scanlineSprDx=new Uint8Array(8);
+    this.oamram=new Oamram();
+    this.paletteRgba=new Uint32Array(64);
     this.initPalette();
   }
 
@@ -290,18 +355,20 @@ export class Ppu{
     this.scanline=-1;
     this.cycle=0;
     this.scanlineSprCnt=0;
-    this.scanlineSprDx=new ArrayBuffer(8);
-    this.scanlineSprDxView=new DataView(this.scanlineSprDx);
+    this.scanlineSprDx.fill(0);
     this.frameDx=0;
     this.frameFinished=-1;
     this.suppressVblank=false;
     this.nmiDelayDots=0;
     this.oamAddress=0;
-    //256*240实际渲染像素, 每个像素包括R,G,B,A值(nes本身没有A值,这里加上方便拓展)
-    this.frameData=new ArrayBuffer(256*240*4);
-    this.frameDataView=new DataView(this.frameData);
-    this.oamram=new Oamram();
+    this.frameWords.fill(0);
+    this.oamram.reset();
     this.evenFrame=true;
+    this.bgValid=false;
+    this.bgY=-2;
+    this.sprLine=-2;
+    this.renderEpoch++;
+    this.oamEpoch++;
   }
 
   public setCpu(_cpu:Cpu):void{
@@ -314,7 +381,7 @@ export class Ppu{
 
   //初始化调色板
   public initPalette():void{
-    this.palette=[ 
+    const rgb:number[][]=[ 
       [0x1D<<2, 0x1D<<2, 0x1D<<2], /* Value 0 */
       [0x09<<2, 0x06<<2, 0x23<<2], /* Value 1 */
       [0x00<<2, 0x00<<2, 0x2A<<2], /* Value 2 */
@@ -380,6 +447,12 @@ export class Ppu{
       [0x00<<2, 0x00<<2, 0x00<<2], /* Value 62 */
       [0x00<<2, 0x00<<2, 0x00<<2], /* Value 63 */
     ];
+    for(let i=0;i<64;i++){
+      const r=rgb[i][0];
+      const g=rgb[i][1];
+      const b=rgb[i][2];
+      this.paletteRgba[i]=(r|(g<<8)|(b<<16)|(255<<24))>>>0;
+    }
   }
 
   //CPU调用的接口
@@ -397,10 +470,12 @@ export class Ppu{
     }
     //设置nametable的时候要修改tempAddress的内容
     this.tmpAddress.setNametable(value&0x3);
+    this.renderEpoch++;
   }
   //写入PPU掩码寄存器
   public writeMask(value:number):void{
     this.regMask.setData(value);
+    this.renderEpoch++;
   }
 
   //获取状态寄存器
@@ -425,6 +500,7 @@ export class Ppu{
   public writeOamdata(value:number):void{
     this.oamram.setData(this.oamAddress,value);
     this.oamAddress=(this.oamAddress+1)&0xff;
+    this.oamEpoch++;
   }
   //获取OAM精灵数据
   public getOamdata():number{
@@ -442,6 +518,7 @@ export class Ppu{
       this.tmpAddress.setYfine(value & 0x7);
       this.addressLatch = true;
     }
+    this.renderEpoch++;
   }
 
   //写入地址
@@ -454,6 +531,7 @@ export class Ppu{
       this.dataAddress.setData(this.tmpAddress.getData());
       this.addressLatch = true;
     }
+    this.renderEpoch++;
   }
   //写入数据
   public writeData(value:number):void{
@@ -479,10 +557,72 @@ export class Ppu{
   }
 
   //从DMA拷贝数据到精灵RAM（从 OAMADDR 起环形写入 256 字节）
-  public oamDma(pageView:DataView):void{
+  public oamDma(page:Uint8Array):void{
+    const bytes=this.oamram.bytes;
+    let addr=this.oamAddress;
     for(let i=0;i<256;i++){
-      this.oamram.setData((this.oamAddress+i)&0xff,pageView.getUint8(i));
+      bytes[addr]=page[i];
+      addr=(addr+1)&0xff;
     }
+    this.oamEpoch++;
+  }
+
+  public runDots(count:number):void{
+    for(let i=0;i<count;i++) this.step();
+  }
+
+  private fetchBackground():void{
+    const addr=this.dataAddress;
+    const yInTile=addr.yFine;
+    const nametableAddr=0x2000|(addr.getData()&0x0fff);
+    const tileDx=this.ppuBus.getValue(nametableAddr);
+    let patterntableAddr=tileDx*16+yInTile;
+    if(this.regCtrl.bgTable) patterntableAddr+=0x1000;
+    this.bgLo=this.ppuBus.getValue(patterntableAddr);
+    this.bgHi=this.ppuBus.getValue(patterntableAddr+8);
+    const attribDx=((addr.yScroll>>2)<<3)+((addr.xScroll>>2)&7);
+    const attribAddress=0x23c0+(addr.ntY*2+addr.ntX)*0x400+attribDx;
+    const attrDx=this.ppuBus.getValue(attribAddress);
+    const attrShift=((addr.yScroll&2)<<1)+(addr.xScroll&2);
+    this.bgPal=(attrDx>>attrShift)&3;
+  }
+
+  private refreshLineSprites(y:number):void{
+    const oam=this.oamram.bytes;
+    const cnt=this.scanlineSprCnt;
+    const tall=this.regCtrl.sprite16;
+    const spTable=this.regCtrl.spTable;
+    const bus=this.ppuBus;
+    for(let i=0;i<cnt;i++){
+      const offset=this.scanlineSprDx[i]<<2;
+      const locY=oam[offset];
+      const tile=oam[offset+1];
+      const attr=oam[offset+2];
+      this.sprX[i]=oam[offset+3];
+      this.sprAttr[i]=attr;
+      const flipY=(attr&0x80)!==0;
+      let patterntableAddr:number;
+      if(tall){
+        let yInTile=(y-1-locY)&0xff;
+        const bank=(tile&1)*0x1000;
+        const topTile=tile&0xfe;
+        const base=(bank+topTile*16)&0xffff;
+        if(flipY) yInTile=(15-yInTile)&0xff;
+        if(yInTile>=8) patterntableAddr=base+16+(yInTile&7);
+        else patterntableAddr=base+(yInTile&7);
+      }else{
+        let yInTile=(y-1-locY)&0xff;
+        if(flipY) yInTile=7-yInTile;
+        patterntableAddr=tile*16+(yInTile&7);
+        if(spTable) patterntableAddr+=0x1000;
+      }
+      this.sprLo[i]=bus.getValue(patterntableAddr);
+      this.sprHi[i]=bus.getValue(patterntableAddr+8);
+    }
+    this.sprLine=y;
+    this.sprRenderEpoch=this.renderEpoch;
+    this.sprVramEpoch=bus.vramEpoch;
+    this.sprOamEpoch=this.oamEpoch;
   }
 
   //PPU主循环
@@ -517,6 +657,7 @@ export class Ppu{
         const x:number= this.cycle - 1;
         const y:number= this.scanline;
 
+        const mask=this.regMask;
         //这三个变量会用来确定颜色的优先级，背景的调色板id，精灵的调色板id，精灵是否在先
         let bkgcolorInPalette=0;
         let sprcolorInPalette=0;
@@ -525,108 +666,71 @@ export class Ppu{
         let bkgPaletteAddress=0;
         let sprPaletteAddress=0;
 
-        if (this.regMask.getShowbkg()){
+        if (mask.showBg){
           //根据偏移量，当前的x是tile中的第几个位置
           const xInTile = (x + this.xFine) % 8;
-          const yInTile = this.dataAddress.getYfine();
-          if (x >= 8 || this.regMask.getShowedgebkg()){
-            //如果隐藏最左边八个像素的背景的话，那最左边八个像素的背景渲染就可以略掉
-            //找出这个位置的命名表内容，找到对应的图案表的地址
-            const nametableAddr:number = 0x2000 | (this.dataAddress.getData() & 0x0fff);
-            const tileDx:number= this.ppuBus.getValue(nametableAddr);
-            // 读取图案表，获取这个像素点的颜色代码
-            //每一个tile占据16个字节。然后根据y的fine滚动数值，来确定这个像素来对应tile的那个位置（tile中每一行就是一个字节）
-            let patterntableAddr:number = tileDx * 16 + yInTile;
-            if (this.regCtrl.getBptableDx()){
-              patterntableAddr += 0x1000;
-              patterntableAddr&0xffff;
+          const vramEpoch=this.ppuBus.vramEpoch;
+          if (x >= 8 || mask.edgeBg){
+            if(
+              xInTile===0||
+              !this.bgValid||
+              this.bgY!==y||
+              this.bgRenderEpoch!==this.renderEpoch||
+              this.bgVramEpoch!==vramEpoch
+            ){
+              this.fetchBackground();
+              this.bgValid=true;
+              this.bgY=y;
+              this.bgRenderEpoch=this.renderEpoch;
+              this.bgVramEpoch=vramEpoch;
             }
-            //TODO 可能有问题
-            const lowBit:number= ((this.ppuBus.getValue(patterntableAddr) >> (7 - xInTile)) & 1);
-            const hiBit:number= ((this.ppuBus.getValue(patterntableAddr + 8) >> (7 - xInTile)) & 1);
-            bkgcolorInPalette = (hiBit << 1) + lowBit;
-            // 读取属性表，得知这个像素点所在的tile对应的调色板id是什么
-            const attribDx:number= ((this.dataAddress.getYscroll() >> 2) << 3) + ((this.dataAddress.getXscroll() >> 2) & 7);
-            const attribAddress:number= 0x23c0 + (this.dataAddress.getNametableY() * 2 + this.dataAddress.getNametableX()) * 0x400 + attribDx;
-            const attrDx:number= this.ppuBus.getValue(attribAddress);
-            // y=16~32，x=16~32时，取attribute table的最高两位作为调色板索引。此时右移6位
-            // y=16~32，x=0~15时，取attribute table的次高两位作为调色板索引。此时右移4位
-            // y=0~15，x=16~32时，取attribute table的次低两位作为调色板索引。此时右移2位
-            // y=0~15，x=0~15时，取attribute table的最低两位作为调色板索引。此时右移0位
-            const attr_shift = ((this.dataAddress.getYscroll() & 2) << 1) + (this.dataAddress.getXscroll() & 2);
-            const palette_dx = (attrDx >> attr_shift) & 3;
-
-            bkgPaletteAddress = 0x3f00 + 4 * palette_dx + bkgcolorInPalette;
+            const shift=7-xInTile;
+            bkgcolorInPalette=((this.bgHi>>shift)&1)<<1|((this.bgLo>>shift)&1);
+            bkgPaletteAddress=0x3f00+(this.bgPal<<2)+bkgcolorInPalette;
+          }else if(xInTile===0){
+            this.bgValid=false;
           }
           // 如果已经到达了一个tile的最后一个像素，则真实像素的下一格就应该是下一个tile的第一个像素了
           if (xInTile === 7){
-            if (this.dataAddress.getXscroll() === 31){
-              this.dataAddress.setXscroll(0);
+            const addr=this.dataAddress;
+            if (addr.xScroll === 31){
+              addr.setXscroll(0);
               //当已经到达这个命名表横轴上的最后一个位置时，则切换到下一个Horizental命名表
-              this.dataAddress.setNametableX(this.dataAddress.getNametableX()===0?1:0);
+              addr.setNametableX(addr.ntX===0?1:0);
             }else{
-              this.dataAddress.setXscroll(this.dataAddress.getXscroll() + 1);
+              addr.setXscroll(addr.xScroll + 1);
             }
           }
         }
-        if (this.regMask.getShowspr()){
-          if (x >= 8 || this.regMask.getShowedgespr()){
-            for (let sprIt=0; sprIt <= this.scanlineSprCnt - 1; sprIt++){
-              const sprDx = this.scanlineSprDxView.getUint8(sprIt);
-              let oamSprite:OAMSprite;
-              //找出这个像素的的图案表的颜色代码
-              if (this.regCtrl.getSpriteSize()){
-                //渲染8*16的精灵
-                oamSprite = this.oamram.getOneSpriteLong(sprDx);
-                if (x - oamSprite.locX < 0 || x - oamSprite.locX >= 8)
-                //TODO
-                  continue;
-                let xInTile = (x - oamSprite.locX)&0xff;
-                //在第二个scanline，渲染的其实是第一个scanline中应该渲染的精灵，所以y轴的数值要减一
-                let yInTile = (y - 1 - oamSprite.locY)&0xff;
-                if(oamSprite.flipX) //x轴翻转
-                  xInTile = (7 - xInTile)&0xff;
-                if (oamSprite.flipY) //y轴翻转
-                  yInTile = (15 - yInTile)&0xff;
-                //对于8*16的sprite，tile占据32个字节。然后根据y轴的数值，来确定这个像素来对应tile的那个位置（tile中每一行就是一个字节）
-                let patterntableAddr;
-                if (yInTile >= 8)
-                  patterntableAddr = oamSprite.patterntableAddress + 16 + (yInTile & 0x7);
-                else
-                  patterntableAddr = oamSprite.patterntableAddress + (yInTile & 0x7);
-                // 与背景一致：bit7 = 最左像素
-                const lowBit:number= ((this.ppuBus.getValue(patterntableAddr) >> (7 - xInTile)) & 1);
-                const hiBit:number= ((this.ppuBus.getValue(patterntableAddr + 8) >> (7 - xInTile)) & 1);
-                sprcolorInPalette =(hiBit << 1) + lowBit;
-              }else{
-                //渲染8*8的精灵
-                oamSprite = this.oamram.getOneSprite(sprDx);
-                if (x - oamSprite.locX < 0 || x - oamSprite.locX >= 8)
-                  continue;
-                //找出这个像素的的图案表的颜色代码
-                let xInTile = (x - oamSprite.locX)&0xff;
-                let yInTile = (y - 1 - oamSprite.locY)&0xff; //Tips: 在第二个scanline，渲染的其实是第一个scanline中应该渲染的精灵，所以y轴的数值要减一
-                if(oamSprite.flipX) //x轴翻转
-                  xInTile = 7 - xInTile;
-                if (oamSprite.flipY) //y轴翻转
-                  yInTile = 7 - yInTile;
-                //对于8*8的sprite，tile占据16个字节。然后根据y轴的数值，来确定这个像素来对应tile的那个位置（tile中每一行就是一个字节）
-                let patterntableAddress = oamSprite.patterntableAddress + (yInTile & 0x7);
-                if (this.regCtrl.getSptableDx()){
-                  patterntableAddress += 0x1000;
-                  patterntableAddress&0xffff;
-                }
-                const lowBit:number= ((this.ppuBus.getValue(patterntableAddress) >> (7 - xInTile)) & 1);
-                const hiBit:number= ((this.ppuBus.getValue(patterntableAddress + 8) >> (7 - xInTile)) & 1);
-                sprcolorInPalette =(hiBit << 1) + lowBit;
-              }
+        if (mask.showSpr){
+          if (x >= 8 || mask.edgeSpr){
+            const vramEpoch=this.ppuBus.vramEpoch;
+            if(
+              this.sprLine!==y||
+              this.sprRenderEpoch!==this.renderEpoch||
+              this.sprVramEpoch!==vramEpoch||
+              this.sprOamEpoch!==this.oamEpoch
+            ){
+              this.refreshLineSprites(y);
+            }
+            const cnt=this.scanlineSprCnt;
+            for (let sprIt=0; sprIt < cnt; sprIt++){
+              const locX=this.sprX[sprIt];
+              if (x - locX < 0 || x - locX >= 8)
+                continue;
+              let xInTile = (x - locX)&0xff;
+              const attr=this.sprAttr[sprIt];
+              if(attr&0x40)
+                xInTile = (7 - xInTile)&0xff;
+              const shift=7-xInTile;
+              sprcolorInPalette=(((this.sprHi[sprIt]>>shift)&1)<<1)|((this.sprLo[sprIt]>>shift)&1);
               //根据颜色代码来获取颜色。如果颜色代码为0的话，则这个像素不使用这个精灵的颜色，否则使用这个精灵的颜色
               if (sprcolorInPalette === 0)
                 continue;
-              sprPaletteAddress = 0x3f10 + 4 * oamSprite.paletteDx + sprcolorInPalette;
-              sprBehindBackground = oamSprite.behindBackground;
+              sprPaletteAddress = 0x3f10 + ((attr&3)<<2) + sprcolorInPalette;
+              sprBehindBackground = (attr&0x20)!==0;
               //sprite 0 hit的触发条件是，当数值不为零的0号sprite与数值不为零的background在同一像素出现
-              if (!this.regStatus.getSpr0hit() && this.regMask.getShowbkg() && sprDx === 0 && bkgcolorInPalette !== 0){
+              if (!this.regStatus.getSpr0hit() && mask.showBg && this.scanlineSprDx[sprIt] === 0 && bkgcolorInPalette !== 0){
                 this.regStatus.setSpr0hit(true);
               }
               break;
@@ -647,11 +751,7 @@ export class Ppu{
           else
             paletteAdd = sprPaletteAddress;
         }
-        const point:number=(x+(y*256))*4;
-        this.frameDataView.setUint8(point,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][0]);
-        this.frameDataView.setUint8(point+1,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][1]);
-        this.frameDataView.setUint8(point+2,this.palette[this.ppuBus.getValue(paletteAdd) & 0x3f][2]);
-        this.frameDataView.setUint8(point+3,255);
+        this.frameWords[(y<<8)+x]=this.paletteRgba[this.ppuBus.getValue(paletteAdd)&0x3f];
       }
       if (this.cycle === 257 && this.regMask.isRenderingEnabled()){
         const yInTile:number = this.dataAddress.getYfine();
@@ -680,15 +780,16 @@ export class Ppu{
         this.scanlineSprCnt = 0;
         let sprOverflow = false;
         //再获取这一条扫描线上需要获取的精灵列表，按照优先级排列前八个精灵。如果超过八个，则置sprite overflow为true
-        const sprLength = this.regCtrl.getSpriteSize() ? 16 : 8;
+        const sprLength = this.regCtrl.sprite16 ? 16 : 8;
+        const oam=this.oamram.bytes;
         for (let sprIt= 0; sprIt <= 63; sprIt++){
-          if (this.oamram.getData(sprIt * 4) > this.scanline - sprLength && this.oamram.getData(sprIt * 4) <= this.scanline){
+          const sprY=oam[sprIt * 4];
+          if (sprY > this.scanline - sprLength && sprY <= this.scanline){
             if (this.scanlineSprCnt === 8){
-              //qDebug() << "Sprite overflow, frame_dx = " << frame_dx << ", scanline = " << scanline << ", sprIt = " << sprIt << endl;
               sprOverflow = true;
               break;
             }else{
-              this.scanlineSprDxView.setUint8(this.scanlineSprCnt,sprIt);
+              this.scanlineSprDx[this.scanlineSprCnt]=sprIt;
               this.scanlineSprCnt++;
             }
           }

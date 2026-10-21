@@ -3,9 +3,9 @@ import type {Mapper,CartridgeReader} from '../cartridge';
 /** iNES Mapper 3 — CNROM：固定 PRG，写 $8000+ 选择 8KB CHR bank */
 export class Mapper3 implements Mapper{
   private chRamPtr:ArrayBuffer;
-  private chRamPtrDataView:DataView;
-  private rpgDataView:DataView;
-  private vromDataView:DataView;
+  private chRamPtrUint8Array:Uint8Array;
+  private rpgUint8Array:Uint8Array;
+  private vromUint8Array:Uint8Array;
   private cartridge:CartridgeReader;
   public nametableMirror:number;
   private chrBank:number;
@@ -18,18 +18,18 @@ export class Mapper3 implements Mapper{
   public reset(_cartridge:CartridgeReader,hasVrom:boolean):void{
     if(!hasVrom){
       this.chRamPtr=new ArrayBuffer(8192);
-      this.chRamPtrDataView=new DataView(this.chRamPtr);
+      this.chRamPtrUint8Array=new Uint8Array(this.chRamPtr);
     }else{
       this.chRamPtr=null;
-      this.chRamPtrDataView=null;
+      this.chRamPtrUint8Array=null;
     }
     this.cartridge=_cartridge;
-    this.rpgDataView=new DataView(
+    this.rpgUint8Array=new Uint8Array(
       this.cartridge.cartridgeData,
       this.cartridge.programOffset,
       this.cartridge.romNum*16384
     );
-    this.vromDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.vromOffset);
+    this.vromUint8Array=new Uint8Array(this.cartridge.cartridgeData,this.cartridge.vromOffset);
     this.chrBank=0;
     // vromNum 为 8KB 块数
     const n=Math.max(1,this.cartridge.vromNum);
@@ -43,7 +43,7 @@ export class Mapper3 implements Mapper{
     }else{
       address=busAddress&0x7fff;
     }
-    return this.rpgDataView.getUint8(address);
+    return this.rpgUint8Array[address];
   }
 
   public cpuWriteRpg(_busAddress:number,value:number):void{
@@ -60,15 +60,15 @@ export class Mapper3 implements Mapper{
 
   public ppuReadPt(busAddress:number):number{
     if(this.cartridge.vromNum===0){
-      return this.chRamPtrDataView.getUint8(busAddress&0x1fff);
+      return this.chRamPtrUint8Array[busAddress&0x1fff];
     }
     const addr=this.chrBank*0x2000+(busAddress&0x1fff);
-    return this.vromDataView.getUint8(addr);
+    return this.vromUint8Array[addr];
   }
 
   public ppuWritePt(busAddress:number,value:number):void{
     if(this.cartridge.vromNum===0){
-      this.chRamPtrDataView.setUint8(busAddress&0x1fff,value);
+      this.chRamPtrUint8Array[busAddress&0x1fff]=value;
     }
   }
 }

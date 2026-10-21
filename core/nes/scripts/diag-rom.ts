@@ -14,12 +14,13 @@ import {Controller} from '../src/controller.ts';
 
 function frameStats(ppu:Ppu):{nonBd:number;bd:string}{
   let nonBd=0;
-  const br=ppu.frameDataView.getUint8(0);
-  const bg=ppu.frameDataView.getUint8(1);
-  const bb=ppu.frameDataView.getUint8(2);
+  const bytes=ppu.frameBytes;
+  const br=bytes[0];
+  const bg=bytes[1];
+  const bb=bytes[2];
   for(let i=0;i<256*240;i++){
     const o=i*4;
-    if(ppu.frameDataView.getUint8(o)!==br||ppu.frameDataView.getUint8(o+1)!==bg||ppu.frameDataView.getUint8(o+2)!==bb) nonBd++;
+    if(bytes[o]!==br||bytes[o+1]!==bg||bytes[o+2]!==bb) nonBd++;
   }
   return {nonBd,bd:`${br},${bg},${bb}`};
 }
@@ -96,7 +97,7 @@ function run(path:string, frames:number):void{
       console.log(
         `f=${f} mask=${ppu.regMask.getData().toString(16)} nonBd=${st.nonBd} bd=${st.bd} `+
         `irqEn=${mm.irqEnable} cnt=${mm.irqCounter}/${mm.irqLatch} fired+=${irqFire-irqBefore} `+
-        `I=${cpu.regSf.getI()} flag=${cpu.irqFlag} prg=${mm.bankRegs[6]},${mm.bankRegs[7]}`
+        `I=${(cpu.status&4)?1:0} flag=${cpu.irqFlag} prg=${mm.bankRegs[6]},${mm.bankRegs[7]}`
       );
     }
   }

@@ -7,14 +7,14 @@ import {NametableType} from '../nametableType';
  */
 export class Mapper4 implements Mapper{
   private chRamPtr:ArrayBuffer;
-  private chRamPtrDataView:DataView;
-  private rpgDataView:DataView;
-  private vromDataView:DataView;
+  private chRamPtrUint8Array:Uint8Array;
+  private rpgUint8Array:Uint8Array;
+  private vromUint8Array:Uint8Array;
   private cartridge:CartridgeReader;
   public nametableMirror:number;
 
   public addRam:ArrayBuffer;
-  public addRamDataView:DataView;
+  public addRamDataView:Uint8Array;
 
   private bankSelect:number;
   private bankRegs:number[];
@@ -45,21 +45,21 @@ export class Mapper4 implements Mapper{
   public reset(_cartridge:CartridgeReader,hasVrom:boolean):void{
     if(!hasVrom){
       this.chRamPtr=new ArrayBuffer(8192);
-      this.chRamPtrDataView=new DataView(this.chRamPtr);
+      this.chRamPtrUint8Array=new Uint8Array(this.chRamPtr);
     }else{
       this.chRamPtr=null;
-      this.chRamPtrDataView=null;
+      this.chRamPtrUint8Array=null;
     }
     this.cartridge=_cartridge;
-    this.rpgDataView=new DataView(
+    this.rpgUint8Array=new Uint8Array(
       this.cartridge.cartridgeData,
       this.cartridge.programOffset,
       this.cartridge.romNum*16384
     );
-    this.vromDataView=new DataView(this.cartridge.cartridgeData,this.cartridge.vromOffset);
+    this.vromUint8Array=new Uint8Array(this.cartridge.cartridgeData,this.cartridge.vromOffset);
 
     this.addRam=new ArrayBuffer(0x2000);
-    this.addRamDataView=new DataView(this.addRam);
+    this.addRamDataView=new Uint8Array(this.addRam);
 
     this.bankSelect=0;
     this.bankRegs=[0,2,4,5,6,7,0,1];
@@ -152,7 +152,7 @@ export class Mapper4 implements Mapper{
     }else{
       bank=last;
     }
-    return this.rpgDataView.getUint8(this.mapPrg8k(this.effectivePrgBank(bank),busAddress));
+    return this.rpgUint8Array[this.mapPrg8k(this.effectivePrgBank(bank),busAddress)];
   }
 
   public cpuWriteRpg(busAddress:number,value:number):void{
@@ -200,29 +200,29 @@ export class Mapper4 implements Mapper{
     if(!this.wramEnable){
       return 0;
     }
-    return this.addRamDataView.getUint8(busAddress-0x6000);
+    return this.addRamDataView[busAddress-0x6000];
   }
 
   public cpuWriteAddRom(busAddress:number,value:number):void{
     if(!this.wramEnable||this.wramWriteProtect){
       return;
     }
-    this.addRamDataView.setUint8(busAddress-0x6000,value);
+    this.addRamDataView[busAddress-0x6000]=value;
   }
 
   public ppuReadPt(busAddress:number):number{
     // CHR ROM/RAM 都走 bank 映射；纯 CHR RAM 的汉化 MMC3 依赖此行为
     const addr=this.chrAddress(busAddress);
     if(this.cartridge.vromNum===0){
-      return this.chRamPtrDataView.getUint8(addr%this.chRamPtr.byteLength);
+      return this.chRamPtrUint8Array[addr%this.chRamPtr.byteLength];
     }
-    return this.vromDataView.getUint8(addr);
+    return this.vromUint8Array[addr];
   }
 
   public ppuWritePt(busAddress:number,value:number):void{
     if(this.cartridge.vromNum===0){
       const addr=this.chrAddress(busAddress);
-      this.chRamPtrDataView.setUint8(addr%this.chRamPtr.byteLength,value);
+      this.chRamPtrUint8Array[addr%this.chRamPtr.byteLength]=value;
     }
   }
 

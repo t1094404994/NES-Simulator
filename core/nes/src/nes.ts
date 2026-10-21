@@ -68,6 +68,19 @@ export interface NesAudioFrame {
   samples: Float32Array;
 }
 
+/** 调试统计。presentFps 是画到屏幕的次数，simFps 是 NES 内部帧。 */
+export interface NesStats {
+  presentFps: number;
+  simFps: number;
+}
+
+function nowMs(): number {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
 function scheduleFrame(cb: () => void): { id: number; raf: boolean } {
   if (typeof requestAnimationFrame === 'function') {
     return { id: requestAnimationFrame(cb), raf: true };
@@ -93,6 +106,10 @@ function cancelFrame(handle: { id: number; raf: boolean } | null): void {
 export class Nes {
   onFrame: ((frame: NesFrame) => void) | null = null;
   onAudio: ((audio: NesAudioFrame) => void) | null = null;
+  /** 没有新模拟帧时，用上一帧再画一次。 */
+  onPresent: (() => void) | null = null;
+  /** setDebug(true) 后大约每半秒回调一次。 */
+  onStats: ((stats: NesStats) => void) | null = null;
 
   private cpubus: CpuBus;
   private cpu: Cpu;
@@ -105,15 +122,17 @@ export class Nes {
 
   private logicBaseFPS = 60;
   private logicFPS = 60;
-  private renderFPS = 60;
   private speed = 1;
   private nextLogicTime = 0;
-  private nextRenderTime = 0;
   private paused = true;
   private disposed = false;
+  private debug = false;
+  private presentCount = 0;
+  private simCount = 0;
+  private statsWindowStart = 0;
   private frameHandle: { id: number; raf: boolean } | null = null;
-  private frameRgba = new Uint8ClampedArray(NES_WIDTH * NES_HEIGHT * 4);
-  private frameWords = new Uint32Array(this.frameRgba.buffer);
+  private frameRgba: Uint8ClampedArray;
+  private frameWords: Uint32Array;
   private audioScratch = new Float32Array(Math.ceil(SAMPLE_PER_FRAME));
   private romLoaded = false;
   private frameMode: NesFrameMode = 'delta';
@@ -128,6 +147,8 @@ export class Nes {
     this.cpu = new Cpu();
     this.ppuBus = new PpuBus();
     this.ppu = new Ppu();
+    this.frameRgba = new Uint8ClampedArray(this.ppu.frameData);
+    this.frameWords = this.ppu.frameWords;
     this.apu = new Apu();
     this.controllerL = new Controller();
     this.controllerR = new Controller();
@@ -180,7 +201,15 @@ export class Nes {
     this.emitFrame();
   }
 
-  /** 模拟倍速。1 为原速，画面仍按 60fps 只提交最新一帧。 */
+  /** 打开后统计画面输出和模拟帧率。 */
+  setDebug(on: boolean): void {
+    this.debug = on;
+    this.presentCount = 0;
+    this.simCount = 0;
+    this.statsWindowStart = 0;
+  }
+
+  /** 模拟倍速。1 为原速。画面跟显示器刷新，模拟仍按 60 乘倍速。 */
   setSpeed(multiplier: number): void {
     const speed = Number.isFinite(multiplier) ? Math.max(0.25, multiplier) : 1;
     this.speed = speed;
@@ -205,7 +234,6 @@ export class Nes {
     this.romLoaded = true;
     this.frameSeen = false;
     this.nextLogicTime = 0;
-    this.nextRenderTime = 0;
     return true;
   }
 
@@ -218,25 +246,29 @@ export class Nes {
   step(): void {
     const lastFrame = this.ppu.frameFinished;
     while (this.ppu.frameFinished === lastFrame) {
-      const lastScanline = this.ppu.scanline;
-      this.ppu.step();
-      this.ppu.step();
-      this.ppu.step();
-      this.cpu.step();
-      if (
-        (this.ppu.scanline === 65 ||
-          this.ppu.scanline === 130 ||
-          this.ppu.scanline === 195 ||
-          this.ppu.scanline === 260) &&
-        this.ppu.scanline !== lastScanline
-      ) {
-        this.apu.step(this.cpubus.getCpuCycleFrame());
+      this.tickCpuCycle();
+      while (this.cpu.pendingCycles() > 0 && this.ppu.frameFinished === lastFrame) {
+        this.tickCpuCycle();
       }
     }
     this.cpu.randerCall();
     this.apu.finish();
     this.emitAudio();
     this.apu.clearSqe();
+  }
+
+  /** 3 个 PPU 点，然后 1 个 CPU 周期。空等周期由 step 在内层排空。 */
+  private tickCpuCycle(): void {
+    const lastScanline = this.ppu.scanline;
+    this.ppu.runDots(3);
+    this.cpu.step();
+    const scanline = this.ppu.scanline;
+    if (
+      (scanline === 65 || scanline === 130 || scanline === 195 || scanline === 260) &&
+      scanline !== lastScanline
+    ) {
+      this.apu.step(this.cpubus.getCpuCycleFrame());
+    }
   }
 
   start(): void {
@@ -248,14 +280,15 @@ export class Nes {
     }
     this.paused = false;
     this.nextLogicTime = 0;
-    this.nextRenderTime = 0;
+    this.statsWindowStart = 0;
+    this.presentCount = 0;
+    this.simCount = 0;
     this.enterFrame();
   }
 
   pause(): void {
     this.paused = true;
     this.nextLogicTime = 0;
-    this.nextRenderTime = 0;
     cancelFrame(this.frameHandle);
     this.frameHandle = null;
   }
@@ -270,36 +303,64 @@ export class Nes {
     this.disposed = true;
     this.onFrame = null;
     this.onAudio = null;
+    this.onPresent = null;
+    this.onStats = null;
   }
 
   private enterFrame(): void {
     if (this.paused || this.disposed) {
       return;
     }
-    const nowTime = Date.now();
+    const nowTime = nowMs();
+    let simSteps = 0;
     if (!this.nextLogicTime) {
       this.nextLogicTime = nowTime + 1000 / this.logicFPS;
       this.step();
+      simSteps = 1;
     } else {
       let maxStep = 10;
       while (nowTime > this.nextLogicTime && maxStep--) {
         this.nextLogicTime += 1000 / this.logicFPS;
         this.step();
+        simSteps += 1;
       }
     }
-    if (!this.nextRenderTime) {
-      this.nextRenderTime = nowTime + 1000 / this.renderFPS;
+    if (simSteps > 0) {
       this.emitFrame();
-    } else if (nowTime > this.nextRenderTime) {
-      this.nextRenderTime += 1000 / this.renderFPS;
-      this.emitFrame();
+    } else if (this.onPresent) {
+      this.onPresent();
     }
+    this.notePresent(nowTime, simSteps);
     this.frameHandle = scheduleFrame(this.enterFrame);
   }
 
+  private notePresent(nowTime: number, simSteps: number): void {
+    if (!this.debug) {
+      return;
+    }
+    this.presentCount += 1;
+    this.simCount += simSteps;
+    if (!this.statsWindowStart) {
+      this.statsWindowStart = nowTime;
+      this.presentCount = 0;
+      this.simCount = 0;
+      return;
+    }
+    const elapsed = nowTime - this.statsWindowStart;
+    if (elapsed < 500) {
+      return;
+    }
+    const scale = 1000 / elapsed;
+    this.onStats?.({
+      presentFps: this.presentCount * scale,
+      simFps: this.simCount * scale,
+    });
+    this.presentCount = 0;
+    this.simCount = 0;
+    this.statsWindowStart = nowTime;
+  }
+
   private emitFrame(): void {
-    const src = new Uint8Array(this.ppu.frameDataView.buffer);
-    this.frameRgba.set(src.subarray(0, this.frameRgba.length));
     if (!this.onFrame) {
       return;
     }

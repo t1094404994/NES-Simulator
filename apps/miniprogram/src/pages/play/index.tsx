@@ -10,6 +10,7 @@ import {
   NesButton,
   type NesFrame,
   type NesPixelScale,
+  type NesStats,
 } from 'nes-simulator';
 import { useRef, useState } from 'react';
 import './index.css';
@@ -86,6 +87,10 @@ export default function PlayPage() {
   const [paused, setPaused] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [scale, setScale] = useState<NesPixelScale>('fit');
+  const [debug, setDebug] = useState(false);
+  const [stats, setStats] = useState<NesStats>({ presentFps: 0, simFps: 0 });
+  const lastFrameRef = useRef<NesFrame | null>(null);
+  const debugRef = useRef(false);
 
   useReady(() => {
     const id = router.params.id;
@@ -115,12 +120,28 @@ export default function PlayPage() {
 
     const nes = new Nes();
     const audio = new NesAudioOut(() => createWxAudio());
-    nes.onFrame = (frame) => {
+    const paint = (frame: NesFrame) => {
       const ctx = ctxRef.current;
       if (!ctx) {
         return;
       }
       paintFrame(ctx, frame, stageRef.current.w, stageRef.current.h, scaleRef.current, imageCache.current);
+    };
+    nes.onFrame = (frame) => {
+      lastFrameRef.current = frame;
+      paint(frame);
+    };
+    nes.onPresent = () => {
+      const frame = lastFrameRef.current;
+      if (frame) {
+        paint(frame);
+      }
+    };
+    nes.onStats = (next) => {
+      setStats({
+        presentFps: Math.round(next.presentFps),
+        simFps: Math.round(next.simFps),
+      });
     };
     nes.onAudio = (frame) => audio.push(frame);
     nesRef.current = nes;
@@ -147,6 +168,13 @@ export default function PlayPage() {
       setError(err.message || '加载失败');
     });
   });
+
+  function toggleDebug() {
+    const next = !debugRef.current;
+    debugRef.current = next;
+    setDebug(next);
+    nesRef.current?.setDebug(next);
+  }
 
   function applySpeed(next: number) {
     setSpeed(next);
@@ -210,8 +238,12 @@ export default function PlayPage() {
         <Canvas type="2d" id="nesCanvas" canvasId="nesCanvas" className="stage-canvas" />
       </View>
       {error ? <Text className="hint">{error}</Text> : <Text className="hint">{title}</Text>}
+      {debug ? (
+        <Text className="hint">画面 {stats.presentFps} · 模拟 {stats.simFps}</Text>
+      ) : null}
       <View className="bar">
         <Text className="chip" onClick={togglePause}>{!started || paused ? '开始' : '暂停'}</Text>
+        <Text className={debug ? 'chip on' : 'chip'} onClick={toggleDebug}>{debug ? '调试开' : '调试'}</Text>
         {[1, 2, 3, 4].map((value) => (
           <Text key={value} className={speed === value ? 'chip on' : 'chip'} onClick={() => applySpeed(value)}>
             {value}x

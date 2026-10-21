@@ -25,7 +25,7 @@ export interface Mapper{
   nametableMirror:number,
   //增加的RAM
   addRam?:ArrayBuffer,
-  addRamDataView?:DataView,
+  addRamDataView?:Uint8Array,
   /** MMC3 扫描线 IRQ 时钟（由 PPU 每扫描线调用一次） */
   notifyA12Rise?:()=>void,
   /** 绑定 IRQ 置位 / 应答回调 */
@@ -127,10 +127,10 @@ export class CartridgeReader{
   }
 
   //获取 WRAM 一页的数据视图（offset 相对 $6000）
-  public getPage(address:number):DataView{
+  public getPage(address:number):Uint8Array{
     if(!this.mapper.addRam){
       throw new Error('卡带没有 WRAM');
     }
-    return new DataView(this.mapper.addRam,address,256);
+    return new Uint8Array(this.mapper.addRam,address,256);
   }
 }

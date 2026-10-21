@@ -1,58 +1,27 @@
 //CPU RAM 实际可用为2kb  0-255bit为零页,256-511bit为栈空间,剩下为游戏程序自由操作的空间
 export class CpuRam{
-  private ram:ArrayBuffer;
-  private ramView:DataView;
-  private addressMax:number;
-  private bit8Max:number;
+  private ram:Uint8Array;
   constructor(){
-    this.addressMax=0x7ff;
-    this.bit8Max=0xff;
-    this.resetRam();
+    this.ram=new Uint8Array(2048);
   }
-  
+
   public resetRam():void{
-    this.ram=new ArrayBuffer(2048);
-    this.ramView=new DataView(this.ram);
+    this.ram.fill(0);
   }
 
   public clear():void{
-    this.ramView=null;
     this.ram=null;
   }
 
-  /**
-   * 设置RAM的数据
-   * @param address 16bit地址 
-   * @param value 数值
-   * @returns 
-   */
   public setBit(address:number,value:number):void{
-    //切掉高位(如果有) 防止溢出
-    // address=address&this.addressMax;
-    // value=value&this.bit8Max;
-    if(address>this.addressMax){
-      throw new Error('地址超过最大值');
-    }
-    if(value>this.bit8Max){
-      throw new Error('数值超过八位最大值');
-    }
-    this.ramView.setUint8(address,value);
-  }
-  
-  /**
-   * 获取RAM对应地址的数值
-   * @param address 地址
-   * @returns 
-   */
-  public getBit(address:number):number{
-    if(address>this.addressMax){
-      throw new Error('地址超过最大值');
-    }
-    return this.ramView.getUint8(address);
+    this.ram[address]=value;
   }
 
-  //获取一页的数据视图
-  public getPage(address:number):DataView{
-    return new DataView(this.ram,address,256);
+  public getBit(address:number):number{
+    return this.ram[address];
+  }
+
+  public getPage(address:number):Uint8Array{
+    return this.ram.subarray(address,address+256);
   }
 }
