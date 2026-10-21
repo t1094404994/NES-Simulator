@@ -9,6 +9,7 @@ import {
   PLAYER2_KEY_MAP,
   detectRenderers,
   openPresenter,
+  romSaveKey,
   type NesAspect,
   type NesFrame,
   type NesPixelScale,
@@ -17,6 +18,7 @@ import {
 } from 'nes-simulator';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { deleteBattery, readBattery, writeBattery } from '@/lib/batterySave';
 import { Drawer, useDrawerContainer } from './Drawer';
 import { PlayShell } from './PlayShell';
 import { type PadButton } from './VirtualPad';
@@ -98,8 +100,11 @@ export function Emulator({
   const [renderer, setRenderer] = useState<NesRendererKind>('2d');
   const [renderers, setRenderers] = useState<NesRendererKind[]>(['2d']);
   const [debug, setDebug] = useState(false);
+  const [battery, setBattery] = useState(false);
   const [stats, setStats] = useState({ presentFps: 0, simFps: 0 });
   const debugRef = useRef(debug);
+  const flushSaveRef = useRef<() => void>(() => {});
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   debugRef.current = debug;
   const speedRef = useRef(speed);
   const scaleRef = useRef(scale);
@@ -162,6 +167,44 @@ export function Emulator({
     }
     audioRef.current = audio;
     nesRef.current = nes;
+    const saveKey = romSaveKey(rom);
+    setBattery(nes.hasBattery());
+    let pending: Uint8Array | null = null;
+    const flushSave = () => {
+      if (!pending) {
+        return;
+      }
+      const bytes = pending;
+      pending = null;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      void writeBattery(saveKey, bytes);
+    };
+    flushSaveRef.current = flushSave;
+    nes.onSaveDirty = () => {
+      const bytes = nes.exportSave();
+      if (!bytes) {
+        return;
+      }
+      pending = bytes;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+      saveTimerRef.current = setTimeout(flushSave, 500);
+    };
+    if (nes.hasBattery()) {
+      void readBattery(saveKey).then((saved) => {
+        if (saved && nesRef.current === nes) {
+          nes.importSave(saved);
+        }
+      }).catch(() => {
+        // 读档失败时按无档继续
+      });
+    }
+    const onHide = () => flushSave();
+    window.addEventListener('pagehide', onHide);
 
     const onKey = (event: KeyboardEvent) => {
       if (event.repeat || menuOpenRef.current) {
@@ -192,6 +235,9 @@ export function Emulator({
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
+      window.removeEventListener('pagehide', onHide);
+      flushSave();
+      flushSaveRef.current = () => {};
       nes.dispose();
       audio.dispose();
       nesRef.current = null;
@@ -262,6 +308,27 @@ export function Emulator({
   useEffect(() => {
     nesRef.current?.setDebug(debug);
   }, [debug]);
+
+  function clearSave() {
+    const nes = nesRef.current;
+    if (!nes) {
+      return;
+    }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    flushSaveRef.current = () => {};
+    const key = romSaveKey(rom);
+    void deleteBattery(key).finally(() => {
+      if (nesRef.current !== nes) {
+        return;
+      }
+      nes.loadRom(rom.slice(0));
+      nes.requestKeyframe();
+      nes.redraw();
+    });
+  }
 
   function applySpeed(value: string) {
     setSpeed(value);
@@ -343,6 +410,9 @@ export function Emulator({
         <Button variant={debug ? 'solid' : 'soft'} onClick={() => setDebug((on) => !on)}>
           {debug ? '调试：开' : '调试：关'}
         </Button>
+        {battery ? (
+          <Button variant="soft" color="gray" onClick={clearSave}>清除存档</Button>
+        ) : null}
         <Flex direction="column" gap="1">
           <Text size="2" color="gray">倍速</Text>
           <Select.Root value={speed} onValueChange={applySpeed}>

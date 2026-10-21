@@ -1,6 +1,6 @@
 import { API, apiUrl, type GameItem } from '@nes/shared';
 import { Canvas, Text, View } from '@tarojs/components';
-import Taro, { useReady, useRouter } from '@tarojs/taro';
+import Taro, { useDidHide, useReady, useRouter } from '@tarojs/taro';
 import {
   frameDestRect,
   NES_HEIGHT,
@@ -13,6 +13,7 @@ import {
   type NesStats,
 } from 'nes-simulator';
 import { useRef, useState } from 'react';
+import { batteryStorageKey, deleteBattery, readBattery, writeBattery } from '../../lib/batterySave';
 import './index.css';
 
 interface Canvas2D {
@@ -88,9 +89,17 @@ export default function PlayPage() {
   const [speed, setSpeed] = useState(1);
   const [scale, setScale] = useState<NesPixelScale>('fit');
   const [debug, setDebug] = useState(false);
+  const [battery, setBattery] = useState(false);
   const [stats, setStats] = useState<NesStats>({ presentFps: 0, simFps: 0 });
   const lastFrameRef = useRef<NesFrame | null>(null);
   const debugRef = useRef(false);
+  const romRef = useRef<ArrayBuffer | null>(null);
+  const saveKeyRef = useRef('');
+  const flushRef = useRef<() => void>(() => {});
+
+  useDidHide(() => {
+    flushRef.current();
+  });
 
   useReady(() => {
     const id = router.params.id;
@@ -164,6 +173,41 @@ export default function PlayPage() {
       if (!nes.loadRom(rom)) {
         throw new Error('无法识别的 ROM');
       }
+      romRef.current = rom;
+      const key = batteryStorageKey(rom);
+      saveKeyRef.current = key;
+      setBattery(nes.hasBattery());
+      let pending: Uint8Array | null = null;
+      let saveTimer: ReturnType<typeof setTimeout> | null = null;
+      flushRef.current = () => {
+        if (!pending) {
+          return;
+        }
+        const bytes = pending;
+        pending = null;
+        if (saveTimer) {
+          clearTimeout(saveTimer);
+          saveTimer = null;
+        }
+        void writeBattery(key, bytes);
+      };
+      nes.onSaveDirty = () => {
+        const bytes = nes.exportSave();
+        if (!bytes) {
+          return;
+        }
+        pending = bytes;
+        if (saveTimer) {
+          clearTimeout(saveTimer);
+        }
+        saveTimer = setTimeout(() => flushRef.current(), 500);
+      };
+      if (nes.hasBattery()) {
+        const saved = await readBattery(key);
+        if (nesRef.current === nes && saved) {
+          nes.importSave(saved);
+        }
+      }
     })().catch((err: Error) => {
       setError(err.message || '加载失败');
     });
@@ -228,6 +272,22 @@ export default function PlayPage() {
     }
   }
 
+  function clearSave() {
+    const nes = nesRef.current;
+    const rom = romRef.current;
+    const key = saveKeyRef.current;
+    if (!nes || !rom || !key) {
+      return;
+    }
+    flushRef.current = () => {};
+    void deleteBattery(key).then(() => {
+      if (nesRef.current !== nes) {
+        return;
+      }
+      nes.loadRom(rom);
+    });
+  }
+
   function hold(button: NesButton, pressed: boolean) {
     nesRef.current?.setButton(1, button, pressed);
   }
@@ -244,6 +304,7 @@ export default function PlayPage() {
       <View className="bar">
         <Text className="chip" onClick={togglePause}>{!started || paused ? '开始' : '暂停'}</Text>
         <Text className={debug ? 'chip on' : 'chip'} onClick={toggleDebug}>{debug ? '调试开' : '调试'}</Text>
+        {battery ? <Text className="chip" onClick={clearSave}>清除存档</Text> : null}
         {[1, 2, 3, 4].map((value) => (
           <Text key={value} className={speed === value ? 'chip on' : 'chip'} onClick={() => applySpeed(value)}>
             {value}x

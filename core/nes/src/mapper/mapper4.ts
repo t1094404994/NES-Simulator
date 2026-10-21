@@ -17,9 +17,11 @@ export class Mapper4 implements Mapper{
   public addRamDataView:Uint8Array;
 
   private bankSelect:number;
-  private bankRegs:number[];
+  protected bankRegs:number[];
   private prgMode:number;
-  private chrMode:number;
+  protected chrMode:number;
+  /** 名称表由 CHR bank bit7 决定，忽略 $A000 镜像位（mapper 118） */
+  protected chrNametable=false;
   private wramEnable:boolean;
   private wramWriteProtect:boolean;
 
@@ -173,9 +175,11 @@ export class Mapper4 implements Mapper{
       }
     }else if(busAddress<0xc000){
       if(even){
-        this.nametableMirror=(value&1)
-          ?NametableType.HORIZONTAL
-          :NametableType.VIRTICAL;
+        if(!this.chrNametable){
+          this.nametableMirror=(value&1)
+            ?NametableType.HORIZONTAL
+            :NametableType.VIRTICAL;
+        }
       }else{
         this.wramEnable=((value>>7)&1)===1;
         this.wramWriteProtect=((value>>6)&1)===1;

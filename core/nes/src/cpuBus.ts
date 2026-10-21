@@ -39,6 +39,11 @@ export class CpuBus{
     return !!(this.cartridgeReader&&this.cartridgeReader.hasWram());
   }
 
+  /** $6000 窗口：WRAM，或 mapper 把这里当寄存器。 */
+  private routes6000():boolean{
+    return this.hasWram()||!!this.cartridgeReader?.mapper?.handles6000;
+  }
+
   public setCpu(_cpu:Cpu):void{
     this.cpu=_cpu;
   }
@@ -118,7 +123,7 @@ export class CpuBus{
     }
     //从增加的RAM中获取（以 mapper.addRam 为准，不限于 battery 位）
     else if(busAddress>=0x6000&&busAddress<0x8000){
-      if(this.hasWram()){
+      if(this.routes6000()){
         value=this.cartridgeReader.mapper.cpuReadAddRom(busAddress);
       }else{
         value=this.openBus;
@@ -194,8 +199,18 @@ export class CpuBus{
     }
     //扩展RAM
     else if(busAddress>=0x6000&&busAddress<0x8000){
-      if(this.hasWram()){
-        this.cartridgeReader.mapper.cpuWriteAddRom(busAddress,value);
+      if(this.routes6000()){
+        const mapper=this.cartridgeReader.mapper;
+        const ram=mapper.addRamDataView;
+        const index=busAddress-0x6000;
+        const before=ram?ram[index]:-1;
+        mapper.cpuWriteAddRom(busAddress,value);
+        if(this.cartridgeReader.hasAddedRom&&ram&&ram[index]!==before){
+          this.cartridgeReader.onBatteryDirty?.();
+        }
+        if(mapper.handles6000){
+          this.ppu.ppuBus.bump();
+        }
       }
     }
     //卡带

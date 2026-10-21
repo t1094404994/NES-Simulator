@@ -4,6 +4,21 @@ import { Mapper2 } from './mapper/mapper2';
 import { Mapper3 } from './mapper/mapper3';
 import { Mapper4 } from './mapper/mapper4';
 import { Mapper7 } from './mapper/mapper7';
+import { Mapper9 } from './mapper/mapper9';
+import { Mapper11 } from './mapper/mapper11';
+import { Mapper16 } from './mapper/mapper16';
+import { Mapper23 } from './mapper/mapper23';
+import { Mapper25 } from './mapper/mapper25';
+import { Mapper33 } from './mapper/mapper33';
+import { Mapper34 } from './mapper/mapper34';
+import { Mapper66 } from './mapper/mapper66';
+import { Mapper69 } from './mapper/mapper69';
+import { Mapper71 } from './mapper/mapper71';
+import { Mapper74 } from './mapper/mapper74';
+import { Mapper75 } from './mapper/mapper75';
+import { Mapper87 } from './mapper/mapper87';
+import { Mapper118 } from './mapper/mapper118';
+import { Mapper140 } from './mapper/mapper140';
 import { NametableType } from './nametableType';
 
 type ReadData=(address:number)=>number;
@@ -33,6 +48,15 @@ export interface Mapper{
   /** 扩展区 $4020–$5FFF 写入（如晶科泰 MMC3 的 $5000 外层 PRG） */
   cpuWriteExp?:WriteData,
   onFrameEnd?:()=>void,
+  /** $6000–$7FFF 是寄存器（即使没有 WRAM 也要转发读写） */
+  handles6000?:boolean,
+  /** 每个 CPU 周期时钟一次（VRC / FME-7 / Bandai IRQ） */
+  clockCpu?:()=>void,
+  /** 按 PPU 地址选择名称表页。没有则用 nametableMirror。 */
+  nametableIndex?:(ppuAddress:number)=>number,
+  /** 电池档字节。没有则使用 addRam。 */
+  exportBattery?:()=>Uint8Array,
+  importBattery?:(data:Uint8Array)=>void,
 }
 
 const MAPPER_FACTORIES:Record<number,MapperCtor>={
@@ -42,6 +66,21 @@ const MAPPER_FACTORIES:Record<number,MapperCtor>={
   3:Mapper3,
   4:Mapper4,
   7:Mapper7,
+  9:Mapper9,
+  11:Mapper11,
+  16:Mapper16,
+  23:Mapper23,
+  25:Mapper25,
+  33:Mapper33,
+  34:Mapper34,
+  66:Mapper66,
+  69:Mapper69,
+  71:Mapper71,
+  74:Mapper74,
+  75:Mapper75,
+  87:Mapper87,
+  118:Mapper118,
+  140:Mapper140,
 };
 
 //卡带数据读取解析保存
@@ -65,6 +104,8 @@ export class CartridgeReader{
 
   // iNES battery-backed PRG RAM 标志（bit1）；实际 WRAM 以 mapper.addRam 为准
   public hasAddedRom:boolean;
+  /** 电池内容变化。Nes 把它接到 onSaveDirty。 */
+  public onBatteryDirty?:()=>void;
   constructor(){
     this.programOffset=16;
     this.hasAddedRom=false;

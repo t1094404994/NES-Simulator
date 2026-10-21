@@ -17,6 +17,7 @@ export { PpuBus } from './ppuBus';
 export type { OAMSprite } from './ppuBus';
 export { NametableType } from './nametableType';
 export { CartridgeReader } from './cartridge';
+export { romSaveKey } from './saveKey';
 export type { Mapper } from './cartridge';
 export { Controller, NesButton, PLAYER1_KEY_MAP, PLAYER2_KEY_MAP } from './controller';
 export { Apu, SAMPLE_PER_FRAME, SAMPLE_PER_SEC } from './apu';

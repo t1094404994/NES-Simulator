@@ -112,6 +112,10 @@ export class PpuBus{
   }
 
   private nametableIndex(busAddress:number):number{
+    const custom=this.cartridgeReader.mapper.nametableIndex;
+    if(custom){
+      return custom.call(this.cartridgeReader.mapper,busAddress)&3;
+    }
     switch(this.cartridgeReader.mapper.nametableMirror){
     //水平镜像 排布为名称表1|名称表1 |(0x800)名称表2|名称表2
     case NametableType.HORIZONTAL:

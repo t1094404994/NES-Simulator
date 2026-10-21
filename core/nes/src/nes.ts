@@ -110,6 +110,8 @@ export class Nes {
   onPresent: (() => void) | null = null;
   /** setDebug(true) 后大约每半秒回调一次。 */
   onStats: ((stats: NesStats) => void) | null = null;
+  /** 电池档有字节变化。宿主去抖后写入本地存储。 */
+  onSaveDirty: (() => void) | null = null;
 
   private cpubus: CpuBus;
   private cpu: Cpu;
@@ -162,6 +164,9 @@ export class Nes {
     this.cpubus.setControllerL(this.controllerL);
     this.cpubus.setControllerR(this.controllerR);
     this.cartridge = new CartridgeReader();
+    this.cartridge.onBatteryDirty = () => {
+      this.onSaveDirty?.();
+    };
     this.controllerL.reset(true);
     this.controllerR.reset(false);
     this.enterFrame = this.enterFrame.bind(this);
@@ -237,6 +242,47 @@ export class Nes {
     return true;
   }
 
+  /** iNES 电池位，并且这颗 mapper 有可保存的 RAM 或 EEPROM。 */
+  hasBattery(): boolean {
+    if (!this.romLoaded || !this.cartridge.hasAddedRom) {
+      return false;
+    }
+    const mapper = this.cartridge.mapper;
+    return !!(mapper?.addRam || mapper?.exportBattery);
+  }
+
+  /** 拷贝当前电池档。没有电池时返回 null。 */
+  exportSave(): Uint8Array | null {
+    if (!this.hasBattery()) {
+      return null;
+    }
+    const mapper = this.cartridge.mapper;
+    if (mapper.exportBattery) {
+      return mapper.exportBattery();
+    }
+    if (!mapper.addRam) {
+      return null;
+    }
+    return new Uint8Array(mapper.addRam.slice(0));
+  }
+
+  /** 写回电池档。长度和当前档不一致时忽略。 */
+  importSave(bytes: Uint8Array): void {
+    if (!this.hasBattery()) {
+      return;
+    }
+    const mapper = this.cartridge.mapper;
+    if (mapper.importBattery) {
+      mapper.importBattery(bytes);
+      return;
+    }
+    const ram = mapper.addRamDataView;
+    if (!ram || bytes.length !== ram.length) {
+      return;
+    }
+    ram.set(bytes);
+  }
+
   setButton(player: NesPlayer, button: NesButton, pressed: boolean): void {
     const controller = player === 1 ? this.controllerL : this.controllerR;
     controller.setButton(button, pressed);
@@ -262,6 +308,7 @@ export class Nes {
     const lastScanline = this.ppu.scanline;
     this.ppu.runDots(3);
     this.cpu.step();
+    this.cartridge.mapper?.clockCpu?.();
     const scanline = this.ppu.scanline;
     if (
       (scanline === 65 || scanline === 130 || scanline === 195 || scanline === 260) &&
@@ -305,6 +352,7 @@ export class Nes {
     this.onAudio = null;
     this.onPresent = null;
     this.onStats = null;
+    this.onSaveDirty = null;
   }
 
   private enterFrame(): void {

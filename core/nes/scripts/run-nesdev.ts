@@ -98,6 +98,7 @@ function run(path:string,maxFrames:number):TestStatus{
       ppu.step();
       ppu.step();
       cpu.step();
+      cart.mapper.clockCpu?.();
       if((ppu.scanline===65||ppu.scanline===130||ppu.scanline===195||ppu.scanline===260)&&ppu.scanline!==previousScanline){
         apu.step(cpuBus.getCpuCycleFrame());
       }
