@@ -1,6 +1,7 @@
 'use client';
 
 import type { MouseEvent, PointerEvent } from 'react';
+import { useI18n } from '@/app/providers';
 
 export type PadButton = 'up' | 'down' | 'left' | 'right' | 'select' | 'start' | 'a' | 'b';
 
@@ -33,13 +34,14 @@ function hold(button: PadButton, onButton: VirtualPadProps['onButton']) {
 }
 
 export function VirtualPad({ onButton }: VirtualPadProps) {
+  const { m } = useI18n();
   return (
     <div className="pad">
       <div className="dpad">
-        <button type="button" className="pad-btn pad-up" aria-label="上" {...hold('up', onButton)}>↑</button>
-        <button type="button" className="pad-btn pad-left" aria-label="左" {...hold('left', onButton)}>←</button>
-        <button type="button" className="pad-btn pad-right" aria-label="右" {...hold('right', onButton)}>→</button>
-        <button type="button" className="pad-btn pad-down" aria-label="下" {...hold('down', onButton)}>↓</button>
+        <button type="button" className="pad-btn pad-up" aria-label={m.padUp} {...hold('up', onButton)}>↑</button>
+        <button type="button" className="pad-btn pad-left" aria-label={m.padLeft} {...hold('left', onButton)}>←</button>
+        <button type="button" className="pad-btn pad-right" aria-label={m.padRight} {...hold('right', onButton)}>→</button>
+        <button type="button" className="pad-btn pad-down" aria-label={m.padDown} {...hold('down', onButton)}>↓</button>
       </div>
       <div className="menu-keys">
         <button type="button" className="pad-btn small" aria-label="Select" {...hold('select', onButton)}>SELECT</button>

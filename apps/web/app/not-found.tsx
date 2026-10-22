@@ -1,31 +1,28 @@
 import { Button, Flex, Heading, Text } from '@radix-ui/themes';
-import type { Metadata } from 'next';
-import { HardLink } from '@/components/HardLink';
-import { SiteHeader } from '@/components/SiteHeader';
-import { pageMeta } from '@/lib/seo';
+import '@radix-ui/themes/styles.css';
+import { Theme } from '@radix-ui/themes';
+import './globals.css';
 
-export const metadata: Metadata = pageMeta({
-  title: '页面不存在',
-  description: '这个地址没有对应的页面。',
-  path: '/404',
-  index: false,
-});
-
-export default function NotFound() {
+export default function RootNotFound() {
   return (
-    <>
-      <SiteHeader reload />
-      <Flex className="page-shell error-page" direction="column" align="center" justify="center" gap="4">
-        <img src="/icon.svg" alt="" width={64} height={64} />
-        <Heading size="9" color="orange">404</Heading>
-        <Heading size="5">页面不存在</Heading>
-        <Text size="3" color="gray" align="center" className="error-reason">
-          这个地址没有对应的页面。
-        </Text>
-        <Button asChild size="3">
-          <HardLink href="/">返回首页</HardLink>
-        </Button>
-      </Flex>
-    </>
+    <html lang="zh-CN">
+      <body>
+        <Theme appearance="dark" accentColor="orange" grayColor="sand" radius="medium">
+          <Flex className="page-shell error-page" direction="column" align="center" justify="center" gap="4">
+            <Heading size="9" color="orange">404</Heading>
+            <Heading size="5">页面不存在 / Page not found</Heading>
+            <Text size="3" color="gray" align="center">这个地址没有对应的页面。 This address does not match a page.</Text>
+            <Flex gap="3">
+              <Button asChild size="3">
+                <a href="/">中文</a>
+              </Button>
+              <Button asChild size="3" variant="soft">
+                <a href="/en">English</a>
+              </Button>
+            </Flex>
+          </Flex>
+        </Theme>
+      </body>
+    </html>
   );
 }

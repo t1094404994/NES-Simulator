@@ -18,7 +18,10 @@ import {
 } from 'nes-simulator';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useI18n } from '@/app/providers';
 import { deleteBattery, readBattery, writeBattery } from '@/lib/batterySave';
+import { localePath, translateError } from '@/lib/i18n';
+import { LanguageSwitch } from './SiteHeader';
 import { Drawer, useDrawerContainer } from './Drawer';
 import { PlayShell } from './PlayShell';
 import { type PadButton } from './VirtualPad';
@@ -82,6 +85,7 @@ export function Emulator({
   coverUrl?: string | null;
   onError?: (message: string) => void;
 }) {
+  const { locale, m } = useI18n();
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nesRef = useRef<Nes | null>(null);
@@ -150,7 +154,7 @@ export function Emulator({
     audio.setSpeed(Number(speedRef.current));
     try {
       if (!nes.loadRom(rom.slice(0))) {
-        const message = '无法识别的 ROM';
+        const message = 'UNRECOGNIZED_ROM';
         if (onErrorRef.current) {
           onErrorRef.current(message);
         } else {
@@ -158,7 +162,7 @@ export function Emulator({
         }
       }
     } catch (err) {
-      const message = err instanceof Error && err.message ? err.message : '加载失败';
+      const message = err instanceof Error && err.message ? err.message : 'LOAD_FAILED';
       if (onErrorRef.current) {
         onErrorRef.current(message);
       } else {
@@ -369,7 +373,8 @@ export function Emulator({
     }
   }
 
-  const pauseLabel = !started ? '开始' : paused ? '继续' : '暂停';
+  const pauseLabel = !started ? m.start : paused ? m.resume : m.pause;
+  const homeHref = localePath(locale, '/');
 
   return (
     <PlayShell
@@ -385,15 +390,15 @@ export function Emulator({
         <>
           <canvas key={renderer} ref={canvasRef} />
           {debug && started ? (
-            <p className="fps-debug">画面 {stats.presentFps} · 模拟 {stats.simFps}</p>
+            <p className="fps-debug">{m.fps(stats.presentFps, stats.simFps)}</p>
           ) : null}
           {error ? (
             <div className="stage-overlay">
-              <Text color="red">{error}</Text>
+              <Text color="red">{translateError(error, m)}</Text>
             </div>
           ) : started ? null : (
             <div className="stage-overlay">
-              <Button size="3" onClick={begin}>开始</Button>
+              <Button size="3" onClick={begin}>{m.start}</Button>
             </div>
           )}
         </>
@@ -403,18 +408,19 @@ export function Emulator({
         open={menuOpen}
         onOpenChange={setMenuOpen}
         title={title}
-        description="键盘：J / L 为 A / B，W A S D 方向，Q / E 为 Select / Start"
+        description={m.keyboardHelp}
       >
-        {error ? <Text color="red">{error}</Text> : null}
+        <LanguageSwitch />
+        {error ? <Text color="red">{translateError(error, m)}</Text> : null}
         <Button onClick={togglePause}>{pauseLabel}</Button>
         <Button variant={debug ? 'solid' : 'soft'} onClick={() => setDebug((on) => !on)}>
-          {debug ? '调试：开' : '调试：关'}
+          {debug ? m.debugOn : m.debugOff}
         </Button>
         {battery ? (
-          <Button variant="soft" color="gray" onClick={clearSave}>清除存档</Button>
+          <Button variant="soft" color="gray" onClick={clearSave}>{m.clearSave}</Button>
         ) : null}
         <Flex direction="column" gap="1">
-          <Text size="2" color="gray">倍速</Text>
+          <Text size="2" color="gray">{m.speed}</Text>
           <Select.Root value={speed} onValueChange={applySpeed}>
             <Select.Trigger style={{ width: '100%' }} />
             <MenuSelect>
@@ -426,11 +432,11 @@ export function Emulator({
           </Select.Root>
         </Flex>
         <Flex direction="column" gap="1">
-          <Text size="2" color="gray">像素</Text>
+          <Text size="2" color="gray">{m.pixels}</Text>
           <Select.Root value={scale} onValueChange={setScale}>
             <Select.Trigger style={{ width: '100%' }} />
             <MenuSelect>
-              <Select.Item value="fit">适应</Select.Item>
+              <Select.Item value="fit">{m.fit}</Select.Item>
               <Select.Item value="1">1x</Select.Item>
               <Select.Item value="2">2x</Select.Item>
               <Select.Item value="3">3x</Select.Item>
@@ -439,7 +445,7 @@ export function Emulator({
           </Select.Root>
         </Flex>
         <Flex direction="column" gap="1">
-          <Text size="2" color="gray">渲染</Text>
+          <Text size="2" color="gray">{m.renderer}</Text>
           <Select.Root value={renderer} onValueChange={(value) => setRenderer(value as NesRendererKind)}>
             <Select.Trigger style={{ width: '100%' }} />
             <MenuSelect>
@@ -450,18 +456,18 @@ export function Emulator({
           </Select.Root>
         </Flex>
         <Flex direction="column" gap="1">
-          <Text size="2" color="gray">画面</Text>
+          <Text size="2" color="gray">{m.aspect}</Text>
           <Select.Root value={aspect} onValueChange={(value) => setAspect(value as NesAspect)}>
             <Select.Trigger style={{ width: '100%' }} />
             <MenuSelect>
               <Select.Item value="16:9">16:9</Select.Item>
               <Select.Item value="4:3">4:3</Select.Item>
-              <Select.Item value="native">原始</Select.Item>
+              <Select.Item value="native">{m.native}</Select.Item>
             </MenuSelect>
           </Select.Root>
         </Flex>
         <Button asChild variant="soft" color="gray">
-          <Link href="/">返回首页</Link>
+          <Link href={homeHref}>{m.backHome}</Link>
         </Button>
       </Drawer>
       }

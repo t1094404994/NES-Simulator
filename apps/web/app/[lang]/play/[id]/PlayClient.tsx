@@ -5,41 +5,47 @@ import { useEffect, useRef, useState } from 'react';
 import { Emulator } from '@/components/Emulator';
 import { PlayShell } from '@/components/PlayShell';
 import { api, coverSrc, type GameItem } from '@/lib/api';
-import { loadRom, peekGame, peekRom } from '@/lib/playCache';
+import { loadRom, peekGame, peekRom, rememberGame } from '@/lib/playCache';
 import { trackEvent } from '@/lib/track';
 import { errorHref, readRomError } from '@/lib/rom';
-import { SITE_NAME } from '@/lib/seo';
+import { useI18n } from '@/app/providers';
 import { API } from '@nes/shared';
 
 function loadMessage(err: unknown): string {
   if (err instanceof Error) {
     if (!err.message || err.message === 'Failed to fetch') {
-      return '无法连接服务器';
+      return 'SERVER_UNREACHABLE';
     }
     return err.message;
   }
-  return '加载失败';
+  return 'LOAD_FAILED';
 }
 
-export default function PlayPage() {
+export function PlayClient({ initialGame }: { initialGame: GameItem | null }) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { locale } = useI18n();
   const id = params.id;
   const [rom, setRom] = useState<ArrayBuffer | null>(null);
-  const [title, setTitle] = useState('');
-  const coverUrl = coverSrc(API.cover(id));
-  const pageTitle = title ? `${title} · ${SITE_NAME}` : '';
+  const [title, setTitle] = useState(initialGame?.title ?? '');
+  const coverUrl = coverSrc(initialGame?.coverUrl ?? API.cover(id));
   const trackedPlay = useRef('');
 
   useEffect(() => {
+    if (initialGame && initialGame.id === id) {
+      rememberGame(initialGame);
+      setTitle(initialGame.title);
+    }
     let cancel = false;
     const known = peekGame(id);
-    setTitle(known?.title ?? '');
+    if (known?.title) {
+      setTitle(known.title);
+    }
     const cached = peekRom(id);
     if (cached) {
       const problem = readRomError(cached);
       if (problem) {
-        router.replace(errorHref(problem));
+        router.replace(errorHref(locale, problem));
         return;
       }
       setRom(cached);
@@ -50,7 +56,7 @@ export default function PlayPage() {
       const [game, buffer] = await Promise.all([
         fetch(api.game(id)).then(async (response) => {
           if (!response.ok) {
-            throw new Error('找不到这款游戏');
+            throw new Error('GAME_NOT_FOUND');
           }
           return response.json() as Promise<GameItem>;
         }),
@@ -70,31 +76,23 @@ export default function PlayPage() {
       }
     })().catch((err: unknown) => {
       if (!cancel) {
-        router.replace(errorHref(loadMessage(err)));
+        router.replace(errorHref(locale, loadMessage(err)));
       }
     });
     return () => {
       cancel = true;
     };
-  }, [id, router]);
+  }, [id, initialGame, locale, router]);
 
   if (!rom) {
-    return (
-      <>
-        {pageTitle ? <title>{pageTitle}</title> : null}
-        <PlayShell title={title} coverUrl={coverUrl} />
-      </>
-    );
+    return <PlayShell title={title} coverUrl={coverUrl} />;
   }
   return (
-    <>
-      {pageTitle ? <title>{pageTitle}</title> : null}
-      <Emulator
-        rom={rom}
-        title={title || 'NES'}
-        coverUrl={coverUrl}
-        onError={(message) => router.replace(errorHref(message))}
-      />
-    </>
+    <Emulator
+      rom={rom}
+      title={title || 'NES'}
+      coverUrl={coverUrl}
+      onError={(message) => router.replace(errorHref(locale, message))}
+    />
   );
 }

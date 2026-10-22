@@ -2,6 +2,7 @@
 
 import { Dialog, Flex } from '@radix-ui/themes';
 import { createContext, useContext, useState, type ReactElement, type ReactNode } from 'react';
+import { useI18n } from '@/app/providers';
 
 const DrawerContainerContext = createContext<HTMLDivElement | null>(null);
 
@@ -24,6 +25,7 @@ export function Drawer({
   trigger?: ReactElement;
   children: ReactNode;
 }) {
+  const { m } = useI18n();
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -39,7 +41,7 @@ export function Drawer({
               <Dialog.Title>{title}</Dialog.Title>
               {description ? <Dialog.Description color="gray" size="2">{description}</Dialog.Description> : null}
             </div>
-            <button type="button" className="drawer-close" aria-label="关闭" onClick={() => onOpenChange(false)}>
+            <button type="button" className="drawer-close" aria-label={m.closeAria} onClick={() => onOpenChange(false)}>
               ×
             </button>
           </div>

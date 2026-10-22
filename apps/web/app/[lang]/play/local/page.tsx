@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Emulator } from '@/components/Emulator';
+import { LanguageSwitch } from '@/components/SiteHeader';
+import { useI18n } from '@/app/providers';
+import { localePath } from '@/lib/i18n';
 import { errorHref, readRomError } from '@/lib/rom';
 
 export default function LocalPlayPage() {
   const router = useRouter();
+  const { locale, m } = useI18n();
   const [rom, setRom] = useState<ArrayBuffer | null>(null);
-  const [title, setTitle] = useState('本地 ROM');
+  const [title, setTitle] = useState(m.localRom);
   const [error, setError] = useState('');
 
   async function onFile(file: File | undefined) {
@@ -22,13 +26,13 @@ export default function LocalPlayPage() {
       const buffer = await file.arrayBuffer();
       const problem = readRomError(buffer);
       if (problem) {
-        router.push(errorHref(problem));
+        router.push(errorHref(locale, problem));
         return;
       }
       setTitle(file.name.replace(/\.nes$/i, ''));
       setRom(buffer);
     } catch {
-      setError('读取文件失败');
+      setError(m.readFileFailed);
     }
   }
 
@@ -37,7 +41,7 @@ export default function LocalPlayPage() {
       <Emulator
         rom={rom}
         title={title}
-        onError={(message) => router.replace(errorHref(message))}
+        onError={(message) => router.replace(errorHref(locale, message))}
       />
     );
   }
@@ -45,16 +49,19 @@ export default function LocalPlayPage() {
   return (
     <Flex className="page-shell" direction="column" gap="4" p="4">
       <Flex justify="between" align="center">
-        <Heading size="6">本地 ROM</Heading>
-        <Button asChild variant="soft" color="gray">
-          <Link href="/">返回</Link>
-        </Button>
+        <Heading size="6">{m.localRom}</Heading>
+        <Flex align="center" gap="3">
+          <LanguageSwitch />
+          <Button asChild variant="soft" color="gray">
+            <Link href={localePath(locale, '/')}>{m.back}</Link>
+          </Button>
+        </Flex>
       </Flex>
-      <Text color="gray">文件只在浏览器里运行，不会上传。</Text>
+      <Text color="gray">{m.fileStaysLocal}</Text>
       <Flex align="center" gap="3">
         <Button asChild>
           <label>
-            选择 .nes 文件
+            {m.pickNesFile}
             <input
               type="file"
               accept=".nes,.NES,application/octet-stream"

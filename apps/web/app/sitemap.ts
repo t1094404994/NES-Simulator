@@ -1,29 +1,53 @@
 import type { MetadataRoute } from 'next';
-import { api, type GameItem } from '@/lib/api';
+import { fetchGames } from '@/lib/games';
+import { locales, localePath, type Locale } from '@/lib/i18n';
 import { SITE_URL } from '@/lib/seo';
+
+function localizedUrl(locale: Locale, path: string): string {
+  const localized = localePath(locale, path);
+  if (localized === '/') {
+    return SITE_URL;
+  }
+  return `${SITE_URL}${localized}`;
+}
+
+function languageLinks(path: string): Record<string, string> {
+  return {
+    'zh-CN': localizedUrl('zh', path),
+    en: localizedUrl('en', path),
+    'x-default': localizedUrl('zh', path),
+  };
+}
+
+function addPath(
+  pages: MetadataRoute.Sitemap,
+  path: string,
+  lastModified: Date,
+  changeFrequency: 'daily' | 'weekly' | 'monthly',
+  priority: number,
+) {
+  for (const locale of locales) {
+    pages.push({
+      url: localizedUrl(locale, path),
+      lastModified,
+      changeFrequency,
+      priority,
+      alternates: { languages: languageLinks(path) },
+    });
+  }
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-  const pages: MetadataRoute.Sitemap = [
-    { url: SITE_URL, lastModified: now, changeFrequency: 'daily', priority: 1 },
-    { url: `${SITE_URL}/play/local`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
-  ];
-  try {
-    const response = await fetch(api.games(), { next: { revalidate: 3600 } });
-    if (!response.ok) {
-      return pages;
-    }
-    const games = (await response.json()) as GameItem[];
-    for (const game of games) {
-      pages.push({
-        url: `${SITE_URL}/play/${game.id}`,
-        lastModified: new Date(game.createdAt),
-        changeFrequency: 'weekly',
-        priority: 0.8,
-      });
-    }
-  } catch {
+  const pages: MetadataRoute.Sitemap = [];
+  addPath(pages, '/', now, 'daily', 1);
+  addPath(pages, '/play/local', now, 'monthly', 0.6);
+  const games = await fetchGames();
+  if (!games) {
     return pages;
+  }
+  for (const game of games) {
+    addPath(pages, `/play/${game.id}`, new Date(game.createdAt), 'weekly', 0.8);
   }
   return pages;
 }

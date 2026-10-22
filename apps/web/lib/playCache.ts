@@ -59,7 +59,7 @@ export function loadRom(id: string): Promise<ArrayBuffer> {
       fetch(api.rom(id))
         .then((response) => {
           if (!response.ok) {
-            throw new Error('ROM 下载失败');
+            throw new Error('ROM_DOWNLOAD_FAILED');
           }
           return response.arrayBuffer();
         })

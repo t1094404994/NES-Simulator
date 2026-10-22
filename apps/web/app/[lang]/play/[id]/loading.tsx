@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { PlayShell } from '@/components/PlayShell';
+import { stripLocale } from '@/lib/i18n';
 import { coverSrc } from '@/lib/api';
 import { peekGame } from '@/lib/playCache';
 import { API } from '@nes/shared';
 
 function playId(pathname: string): string {
-  const parts = pathname.split('/').filter(Boolean);
+  const parts = stripLocale(pathname).split('/').filter(Boolean);
   if (parts[0] !== 'play' || !parts[1] || parts[1] === 'local') {
     return '';
   }

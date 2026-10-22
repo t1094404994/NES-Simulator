@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import type { CSSProperties, ReactNode, Ref } from 'react';
+import { useI18n } from '@/app/providers';
+import { localePath } from '@/lib/i18n';
 import { VirtualPad, type PadButton } from './VirtualPad';
 
 function IconBack() {
@@ -42,14 +44,15 @@ export function PlayShell({
   onMenu?: () => void;
   menu?: ReactNode;
 }) {
+  const { locale, m } = useI18n();
   return (
     <div className="emulator">
       <div className="play-top">
-        <Link href="/" className="play-icon-btn" aria-label="返回">
+        <Link href={localePath(locale, '/')} className="play-icon-btn" aria-label={m.backAria}>
           <IconBack />
         </Link>
-        <p className="play-title">{title}</p>
-        <button type="button" className="play-icon-btn" aria-label="设置" onClick={onMenu} disabled={!onMenu}>
+        <h1 className="play-title">{title}</h1>
+        <button type="button" className="play-icon-btn" aria-label={m.settingsAria} onClick={onMenu} disabled={!onMenu}>
           <IconSettings />
         </button>
       </div>
