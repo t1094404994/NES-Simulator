@@ -12,7 +12,7 @@ function shortTitle(title: string): string {
   return title.length > 8 ? `${title.slice(0, 8)}…` : title;
 }
 
-export function topGames(games: GameStat[]): GameStat[] {
+function topGames(games: GameStat[]): GameStat[] {
   return games.slice(0, BAR_LIMIT);
 }
 
@@ -37,134 +37,99 @@ function pieSlices(games: GameStat[]): PieSlice[] {
   return slices;
 }
 
-interface ParametricEquation {
-  u: { min: number; max: number; step: number };
-  v: { min: number; max: number; step: number };
-  x: (u: number, v: number) => number;
-  y: (u: number, v: number) => number;
-  z: (u: number, v: number) => number;
-}
+const tooltipStyle = {
+  backgroundColor: 'rgba(15, 23, 42, 0.92)',
+  borderColor: '#334155',
+  textStyle: { color: '#e2e8f0', fontFamily: FONT },
+};
 
-/** ECharts GL 的参数方程立体饼图。高度按数值拉开。 */
-function pieEquation(startRatio: number, endRatio: number, height: number): ParametricEquation {
-  const startRadian = startRatio * Math.PI * 2;
-  const endRadian = endRatio * Math.PI * 2;
-  const k = 1 / 3;
-  const hoverRate = 1;
+function verticalGradient(from: string, to: string) {
   return {
-    u: { min: -Math.PI, max: Math.PI * 3, step: Math.PI / 32 },
-    v: { min: 0, max: Math.PI * 2, step: Math.PI / 20 },
-    x(u, v) {
-      const angle = u < startRadian ? startRadian : u > endRadian ? endRadian : u;
-      return Math.cos(angle) * (1 + Math.cos(v) * k) * hoverRate;
-    },
-    y(u, v) {
-      const angle = u < startRadian ? startRadian : u > endRadian ? endRadian : u;
-      return Math.sin(angle) * (1 + Math.cos(v) * k) * hoverRate;
-    },
-    z(u, v) {
-      if (u < -Math.PI * 0.5) {
-        return Math.sin(u);
-      }
-      if (u > Math.PI * 2.5) {
-        return Math.sin(u) * height * 0.1;
-      }
-      return Math.sin(v) > 0 ? height * 0.1 : -1;
-    },
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 0,
+    y2: 1,
+    colorStops: [
+      { offset: 0, color: from },
+      { offset: 1, color: to },
+    ],
   };
 }
 
 export function playBarOption(games: GameStat[]): EChartsCoreOption {
   const rows = topGames(games);
-  const maxValue = Math.max(1, ...rows.flatMap((game) => [game.plays, game.players]));
-  const bar = {
-    type: 'bar3D',
-    shading: 'lambert',
-    barSize: 7,
-    bevelSize: 0.3,
-    bevelSmoothness: 3,
-    minHeight: 0,
-    label: { show: false },
-    emphasis: { itemStyle: { color: '#f8fafc' } },
-  };
   return {
     backgroundColor: 'transparent',
+    animationDuration: 900,
+    animationEasing: 'cubicOut',
+    animationDelay: (index: number) => index * 40,
     textStyle: { fontFamily: FONT },
     legend: {
-      top: 8,
+      top: 4,
       textStyle: { color: '#cbd5e1', fontFamily: FONT },
       data: ['游玩次数', '游玩人数'],
     },
     tooltip: {
-      backgroundColor: 'rgba(15, 23, 42, 0.92)',
-      borderColor: '#334155',
-      textStyle: { color: '#e2e8f0', fontFamily: FONT },
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      ...tooltipStyle,
       formatter: (raw: unknown) => {
-        const item = raw as { value?: number[]; seriesName?: string };
-        const value = item.value;
-        const game = value ? rows[value[0]] : undefined;
-        if (!value || !game) {
+        const items = (Array.isArray(raw) ? raw : [raw]) as Array<{
+          dataIndex?: number;
+          seriesName?: string;
+          value?: number;
+          marker?: string;
+        }>;
+        const game = rows[items[0]?.dataIndex ?? -1];
+        if (!game) {
           return '';
         }
-        return `${game.title}<br/>${item.seriesName}：${value[2].toLocaleString('zh-CN')}`;
+        const lines = items.map((item) => (
+          `${item.marker ?? ''}${item.seriesName}：${Number(item.value ?? 0).toLocaleString('zh-CN')}`
+        ));
+        return `${game.title}<br/>${lines.join('<br/>')}`;
       },
     },
-    xAxis3D: {
+    grid: { left: 48, right: 16, top: 48, bottom: rows.length > 6 ? 64 : 36 },
+    xAxis: {
       type: 'category',
       data: rows.map((game) => shortTitle(game.title)),
-      name: '',
-      axisLabel: { interval: 0, margin: 12, color: '#e2e8f0', fontSize: 12 },
-      axisLine: { lineStyle: { color: '#64748b' } },
+      axisTick: { alignWithLabel: true },
+      axisLabel: {
+        interval: 0,
+        color: '#e2e8f0',
+        fontSize: 12,
+        rotate: rows.length > 6 ? 28 : 0,
+      },
+      axisLine: { lineStyle: { color: '#334155' } },
     },
-    yAxis3D: {
-      type: 'category',
-      data: ['次数', '人数'],
-      name: '',
-      axisLabel: { margin: 12, color: '#e2e8f0', fontSize: 12 },
-      axisLine: { lineStyle: { color: '#64748b' } },
-    },
-    zAxis3D: {
+    yAxis: {
       type: 'value',
-      min: 0,
-      max: maxValue,
-      name: '',
+      minInterval: 1,
       axisLabel: { color: '#94a3b8' },
-      axisLine: { lineStyle: { color: '#64748b' } },
       splitLine: { lineStyle: { color: '#1e293b' } },
-    },
-    grid3D: {
-      top: 28,
-      boxWidth: 200,
-      boxDepth: 64,
-      environment: '#0b1220',
-      axisPointer: { show: false },
-      light: {
-        main: { intensity: 1.4, shadow: true, shadowQuality: 'high', alpha: 40, beta: 50 },
-        ambient: { intensity: 0.42 },
-      },
-      viewControl: {
-        projection: 'perspective',
-        autoRotate: rows.length > 1,
-        autoRotateSpeed: 6,
-        distance: 230,
-        alpha: 20,
-        beta: 18,
-        minDistance: 140,
-        maxDistance: 380,
-      },
     },
     series: [
       {
-        ...bar,
         name: '游玩次数',
-        itemStyle: { color: '#22d3ee', opacity: 0.95 },
-        data: rows.map((game, index) => [index, 0, game.plays]),
+        type: 'bar',
+        barMaxWidth: 22,
+        data: rows.map((game) => game.plays),
+        itemStyle: {
+          borderRadius: [6, 6, 0, 0],
+          color: verticalGradient('#67e8f9', '#0e7490'),
+        },
       },
       {
-        ...bar,
         name: '游玩人数',
-        itemStyle: { color: '#c084fc', opacity: 0.95 },
-        data: rows.map((game, index) => [index, 1, game.players]),
+        type: 'bar',
+        barMaxWidth: 22,
+        data: rows.map((game) => game.players),
+        itemStyle: {
+          borderRadius: [6, 6, 0, 0],
+          color: verticalGradient('#e9d5ff', '#7c3aed'),
+        },
       },
     ],
   };
@@ -176,37 +141,19 @@ export function playPieOption(games: GameStat[]): EChartsCoreOption | null {
     return null;
   }
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
-  const max = Math.max(...slices.map((slice) => slice.value));
-  let cursor = 0;
-  const series = slices.map((slice) => {
-    const start = cursor / total;
-    cursor += slice.value;
-    const end = cursor / total;
-    const height = 10 + (slice.value / max) * 26;
-    return {
-      name: slice.name,
-      type: 'surface',
-      parametric: true,
-      wireframe: { show: false },
-      itemStyle: { color: slice.color, opacity: 0.96 },
-      parametricEquation: pieEquation(start, end, height),
-    };
-  });
   return {
     backgroundColor: 'transparent',
+    animationDuration: 900,
+    animationEasing: 'cubicOut',
     textStyle: { fontFamily: FONT },
     tooltip: {
-      backgroundColor: 'rgba(15, 23, 42, 0.92)',
-      borderColor: '#334155',
-      textStyle: { color: '#e2e8f0', fontFamily: FONT },
+      trigger: 'item',
+      ...tooltipStyle,
       formatter: (raw: unknown) => {
-        const item = raw as { seriesName?: string };
-        const slice = slices.find((entry) => entry.name === item.seriesName);
-        if (!slice) {
-          return '';
-        }
-        const percent = Math.round((slice.value / total) * 1000) / 10;
-        return `${slice.name}<br/>游玩 ${slice.value.toLocaleString('zh-CN')} 次 · ${percent}%`;
+        const item = raw as { name?: string; value?: number; percent?: number };
+        const value = Number(item.value ?? 0).toLocaleString('zh-CN');
+        const percent = item.percent ?? Math.round((Number(item.value ?? 0) / total) * 1000) / 10;
+        return `${item.name ?? ''}<br/>游玩 ${value} 次 · ${percent}%`;
       },
     },
     legend: {
@@ -214,31 +161,26 @@ export function playPieOption(games: GameStat[]): EChartsCoreOption | null {
       right: 8,
       top: 'middle',
       textStyle: { color: '#cbd5e1', fontFamily: FONT },
-      data: slices.map((slice) => slice.name),
     },
-    xAxis3D: { min: -1.4, max: 1.4 },
-    yAxis3D: { min: -1.4, max: 1.4 },
-    zAxis3D: { min: -1.4, max: 1.4 },
-    grid3D: {
-      show: false,
-      boxHeight: 18,
-      left: '-8%',
-      environment: '#0b1220',
-      viewControl: {
-        alpha: 32,
-        beta: 40,
-        distance: 180,
-        autoRotate: true,
-        autoRotateSpeed: 10,
-        rotateSensitivity: 1,
-        zoomSensitivity: 1,
-        panSensitivity: 0,
+    series: [
+      {
+        type: 'pie',
+        radius: ['46%', '72%'],
+        center: ['36%', '54%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderRadius: 6, borderColor: '#0b1220', borderWidth: 2 },
+        label: { show: false },
+        emphasis: {
+          scale: true,
+          scaleSize: 8,
+          itemStyle: { shadowBlur: 16, shadowColor: 'rgba(0, 0, 0, 0.35)' },
+        },
+        data: slices.map((slice) => ({
+          name: slice.name,
+          value: slice.value,
+          itemStyle: { color: slice.color },
+        })),
       },
-      light: {
-        main: { intensity: 1.3, shadow: true, alpha: 40, beta: 30 },
-        ambient: { intensity: 0.45 },
-      },
-    },
-    series,
+    ],
   };
 }

@@ -14,7 +14,6 @@
     "@mui/material": "^9.5.0",
     "@nes/shared": "workspace:*",
     "echarts": "^6.1.0",
-    "echarts-gl": "^2.1.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4"

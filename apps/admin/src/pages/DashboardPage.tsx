@@ -5,7 +5,6 @@ import VideogameAssetIcon from '@mui/icons-material/VideogameAsset';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Stack,
@@ -21,18 +20,31 @@ import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import type { AdminStats } from '@nes/shared';
 import { formatDateTime, loadStats } from '../api';
-import { GlChart } from '../charts/GlChart';
+import { Chart } from '../charts/Chart';
 import { playBarOption, playPieOption } from '../charts/options';
+import { ArtNumber, type ArtTone } from '../components/ArtNumber';
 import { LoadingBlock } from '../components/LoadingBlock';
 
-function StatCard({ label, value, icon }: { label: string; value: number; icon: ReactNode }) {
+function StatCard({ label, value, icon, tone }: { label: string; value: number; icon: ReactNode; tone: ArtTone }) {
   return (
     <Card>
       <CardContent>
         <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
             <Typography variant="body2" color="text.secondary">{label}</Typography>
-            <Typography variant="h4" sx={{ mt: 1 }}>{value.toLocaleString('zh-CN')}</Typography>
+            <Box
+              sx={{
+                mt: 1.25,
+                display: 'inline-flex',
+                px: 1.25,
+                py: 0.75,
+                borderRadius: 1.5,
+                background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 16px rgba(15, 23, 42, 0.12)',
+              }}
+            >
+              <ArtNumber value={value} tone={tone} />
+            </Box>
           </Box>
           <Box
             sx={{
@@ -119,24 +131,24 @@ export function DashboardPage() {
               gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' },
             }}
           >
-            <StatCard label="累计访问人数" value={stats.visitors.total} icon={<PeopleAltIcon />} />
-            <StatCard label="今日访问人数" value={stats.visitors.today} icon={<TodayIcon />} />
-            <StatCard label="累计游玩次数" value={stats.plays.total} icon={<SportsEsportsIcon />} />
-            <StatCard label="游戏数量" value={stats.games} icon={<VideogameAssetIcon />} />
+            <StatCard label="累计访问人数" value={stats.visitors.total} icon={<PeopleAltIcon />} tone="gold" />
+            <StatCard label="今日访问人数" value={stats.visitors.today} icon={<TodayIcon />} tone="cyan" />
+            <StatCard label="累计游玩次数" value={stats.plays.total} icon={<SportsEsportsIcon />} tone="pink" />
+            <StatCard label="游戏数量" value={stats.games} icon={<VideogameAssetIcon />} tone="lime" />
           </Box>
           <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', lg: '1.5fr 1fr' } }}>
-            <ChartPanel title="游玩对比" hint="拖动旋转，滚轮缩放。柱高分别是游玩次数和游玩人数。">
+            <ChartPanel title="游玩对比" hint="柱形图展示游玩次数最高的 10 款游戏，对比游玩次数和游玩人数。">
               {barOption && stats.gameStats.length > 0 ? (
-                <GlChart option={barOption} height={440} />
+                <Chart option={barOption} height={440} />
               ) : (
                 <Box sx={{ height: 440, display: 'grid', placeItems: 'center' }}>
                   <Typography sx={{ color: '#94a3b8' }}>还没有游戏。</Typography>
                 </Box>
               )}
             </ChartPanel>
-            <ChartPanel title="游玩占比" hint="扇区高度随游玩次数变化。">
+            <ChartPanel title="游玩占比" hint="饼图按游玩次数占比，最多展示 6 款，其余计入其他。">
               {pieOption ? (
-                <GlChart option={pieOption} height={440} />
+                <Chart option={pieOption} height={440} />
               ) : (
                 <Box sx={{ height: 440, display: 'grid', placeItems: 'center' }}>
                   <Typography sx={{ color: '#94a3b8' }}>还没有游玩记录。</Typography>
@@ -177,8 +189,8 @@ export function DashboardPage() {
                             <Typography variant="body2">{game.title}</Typography>
                           </Stack>
                         </TableCell>
-                        <TableCell align="right">{game.plays.toLocaleString('zh-CN')}</TableCell>
-                        <TableCell align="right">{game.players.toLocaleString('zh-CN')}</TableCell>
+                        <TableCell align="right"><ArtNumber value={game.plays} tone="cyan" size="md" /></TableCell>
+                        <TableCell align="right"><ArtNumber value={game.players} tone="pink" size="md" /></TableCell>
                         <TableCell>{formatDateTime(game.lastPlayedAt)}</TableCell>
                       </TableRow>
                     ))}

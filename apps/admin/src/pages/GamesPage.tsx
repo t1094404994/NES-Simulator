@@ -1,4 +1,5 @@
 import AddIcon from '@mui/icons-material/Add';
+import SearchIcon from '@mui/icons-material/Search';
 import {
   Alert,
   Box,
@@ -7,6 +8,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  InputAdornment,
   Snackbar,
   Stack,
   Table,
@@ -14,11 +16,12 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Typography,
 } from '@mui/material';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import type { GameItem } from '@nes/shared';
 import { createGame, formatDateTime, listGames, removeGame, updateCover } from '../api';
 import { LoadingBlock } from '../components/LoadingBlock';
@@ -32,6 +35,19 @@ export function GamesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [coverGame, setCoverGame] = useState<GameItem | null>(null);
   const [deleteGame, setDeleteGame] = useState<GameItem | null>(null);
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const filtered = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    if (!keyword) {
+      return games;
+    }
+    return games.filter((game) => game.title.toLowerCase().includes(keyword));
+  }, [games, query]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageRows = filtered.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage);
 
   useEffect(() => {
     document.title = '游戏管理 · NES 管理后台';
@@ -52,6 +68,12 @@ export function GamesPage() {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (page !== safePage) {
+      setPage(safePage);
+    }
+  }, [page, safePage]);
+
   return (
     <Stack spacing={3}>
       <Stack
@@ -64,9 +86,30 @@ export function GamesPage() {
             新增、删除游戏，或更换封面。
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-          新增游戏
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ width: { xs: '100%', sm: 'auto' } }}>
+          <TextField
+            size="small"
+            placeholder="搜索游戏名称"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(0);
+            }}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+            sx={{ width: { xs: '100%', sm: 260 } }}
+          />
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+            新增游戏
+          </Button>
+        </Stack>
       </Stack>
       {loading ? <LoadingBlock label="正在加载游戏" /> : null}
       {!loading && error ? (
@@ -86,13 +129,15 @@ export function GamesPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {games.length === 0 ? (
+              {filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4}>
-                    <Typography color="text.secondary">还没有游戏。</Typography>
+                    <Typography color="text.secondary">
+                      {games.length === 0 ? '还没有游戏。' : '没有匹配的游戏。'}
+                    </Typography>
                   </TableCell>
                 </TableRow>
-              ) : games.map((game) => (
+              ) : pageRows.map((game) => (
                 <TableRow key={game.id} hover>
                   <TableCell>
                     <Box
@@ -112,6 +157,20 @@ export function GamesPage() {
               ))}
             </TableBody>
           </Table>
+          <TablePagination
+            component="div"
+            count={filtered.length}
+            page={filtered.length === 0 ? 0 : safePage}
+            onPageChange={(_event, next) => setPage(next)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(event) => {
+              setRowsPerPage(Number(event.target.value));
+              setPage(0);
+            }}
+            rowsPerPageOptions={[10, 20, 50]}
+            labelRowsPerPage="每页"
+            labelDisplayedRows={({ from, to, count }) => `${from}–${to}，共 ${count} 条`}
+          />
         </TableContainer>
       ) : null}
       {createOpen ? (

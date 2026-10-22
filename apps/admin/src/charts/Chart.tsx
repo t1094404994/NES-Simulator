@@ -1,10 +1,9 @@
 import * as echarts from 'echarts';
-import 'echarts-gl';
 import type { EChartsCoreOption } from 'echarts';
 import { useEffect, useRef } from 'react';
 import { Box } from '@mui/material';
 
-export function GlChart({ option, height }: { option: EChartsCoreOption; height: number }) {
+export function Chart({ option, height }: { option: EChartsCoreOption; height: number }) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
 
