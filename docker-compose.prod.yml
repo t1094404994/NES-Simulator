@@ -14,7 +14,9 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ./deploy/nginx
+    image: nes-simulator-nginx
     network_mode: host
     depends_on:
       server:
@@ -24,7 +26,6 @@ services:
       admin:
         condition: service_started
     volumes:
-      - ./deploy/nginx/www.nes-simulator.com.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
     restart: unless-stopped
