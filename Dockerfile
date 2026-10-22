@@ -6,7 +6,19 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
   && rm -rf /var/lib/apt/lists/* \
   && corepack enable \
-  && corepack prepare pnpm@10.27.0 --activate
+  && registry="" \
+  && for candidate in https://registry.npmjs.org https://registry.npmmirror.com; do \
+       for attempt in 1 2 3; do \
+         if COREPACK_NPM_REGISTRY="$candidate" corepack prepare pnpm@10.27.0 --activate; then \
+           registry="$candidate"; \
+           break 2; \
+         fi; \
+         echo "pnpm prepare failed via ${candidate} (attempt ${attempt})"; \
+         sleep $((attempt * 5)); \
+       done; \
+     done \
+  && test -n "$registry" \
+  && pnpm config set registry "$registry"
 WORKDIR /app
 
 FROM base AS server-deps
