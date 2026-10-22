@@ -1,11 +1,9 @@
 import { cache } from 'react';
-import { api, type GameItem } from '@/lib/api';
-
-const REVALIDATE_SECONDS = 300;
+import { API, apiUrl, serverApiBase, type GameItem } from '@/lib/api';
 
 export const fetchGames = cache(async (): Promise<GameItem[] | null> => {
   try {
-    const response = await fetch(api.games(), { next: { revalidate: REVALIDATE_SECONDS } });
+    const response = await fetch(apiUrl(serverApiBase(), API.games), { cache: 'no-store' });
     if (!response.ok) {
       return null;
     }
@@ -16,7 +14,7 @@ export const fetchGames = cache(async (): Promise<GameItem[] | null> => {
 });
 
 export const fetchGame = cache(async (id: string): Promise<GameItem | null> => {
-  const response = await fetch(api.game(id), { next: { revalidate: REVALIDATE_SECONDS } });
+  const response = await fetch(apiUrl(serverApiBase(), API.game(id)), { cache: 'no-store' });
   if (response.status === 404) {
     return null;
   }

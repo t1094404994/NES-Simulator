@@ -4,8 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
       target: server
-    ports:
-      - "127.0.0.1:8787:8787"
     environment:
       HOST: 0.0.0.0
       PORT: 8787
@@ -35,9 +33,9 @@ services:
       dockerfile: Dockerfile
       target: web
       args:
-        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://127.0.0.1:8787}
-    ports:
-      - "127.0.0.1:3000:3000"
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE-}
+    environment:
+      API_INTERNAL_BASE: http://server:8787
     depends_on:
       server:
         condition: service_healthy
@@ -47,11 +45,24 @@ services:
       context: .
       dockerfile: Dockerfile
       target: admin
-    ports:
-      - "127.0.0.1:4173:80"
     depends_on:
       server:
         condition: service_healthy
+
+  nginx:
+    build:
+      context: ./deploy/nginx
+      args:
+        NGINX_CONF: local.conf
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      server:
+        condition: service_healthy
+      web:
+        condition: service_started
+      admin:
+        condition: service_started
 
 volumes:
   server-data:

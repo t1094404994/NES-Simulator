@@ -1,2 +1,3 @@
 FROM nginx:1.27-alpine
-COPY www.nes-simulator.com.conf /etc/nginx/conf.d/default.conf
+ARG NGINX_CONF=local.conf
+COPY ${NGINX_CONF} /etc/nginx/conf.d/default.conf

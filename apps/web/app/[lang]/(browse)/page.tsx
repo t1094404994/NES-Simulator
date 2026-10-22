@@ -8,7 +8,7 @@ import { fetchGames } from '@/lib/games';
 import { htmlLang, localePath, messagesFor, resolveLocale } from '@/lib/i18n';
 import { absoluteUrl, SITE_NAME } from '@/lib/seo';
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 type HomePageProps = {
   params: Promise<{ lang: string }>;

@@ -1,23 +1,32 @@
 services:
   server:
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
     environment:
       CORS_ORIGIN: https://www.nes-simulator.com,https://nes-simulator.com
 
   web:
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
     build:
       args:
         NEXT_PUBLIC_API_BASE: https://www.nes-simulator.com
 
   admin:
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:4173:80"
 
   nginx:
     build:
       context: ./deploy/nginx
+      args:
+        NGINX_CONF: www.nes-simulator.com.conf
     image: nes-simulator-nginx
     network_mode: host
+    ports: !reset []
     depends_on:
       server:
         condition: service_healthy
