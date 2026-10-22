@@ -73,5 +73,5 @@ RUN pnpm --filter nes-admin build
 
 FROM nginx:1.27-alpine AS admin
 COPY apps/admin/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=admin-build /app/apps/admin/dist /usr/share/nginx/html
+COPY --from=admin-build /app/apps/admin/dist /usr/share/nginx/html/admin
 EXPOSE 80
