@@ -1,24 +1,8 @@
 FROM node:24-bookworm-slim AS base
-ENV PNPM_HOME=/pnpm
-ENV PATH="$PNPM_HOME:$PATH"
-ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
   && rm -rf /var/lib/apt/lists/* \
-  && corepack enable \
-  && registry="" \
-  && for candidate in https://registry.npmjs.org https://registry.npmmirror.com; do \
-       for attempt in 1 2 3; do \
-         if COREPACK_NPM_REGISTRY="$candidate" corepack prepare pnpm@10.27.0 --activate; then \
-           registry="$candidate"; \
-           break 2; \
-         fi; \
-         echo "pnpm prepare failed via ${candidate} (attempt ${attempt})"; \
-         sleep $((attempt * 5)); \
-       done; \
-     done \
-  && test -n "$registry" \
-  && pnpm config set registry "$registry"
+  && npm install -g pnpm@10.27.0
 WORKDIR /app
 
 FROM base AS server-deps
